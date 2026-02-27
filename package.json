@@ -16,5 +16,12 @@
         "tailwindcss": "^4.2.1",
         "typescript": "^5.9.3",
         "vite": "^7.3.1"
+    },
+    "dependencies": {
+        "@babylonjs/core": "^8.53.0",
+        "@babylonjs/loaders": "^8.53.0",
+        "koota": "^0.6.5",
+        "tonal": "^6.4.3",
+        "tone": "^15.1.22"
     }
 }
