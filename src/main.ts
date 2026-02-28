@@ -10,7 +10,7 @@ import '@babylonjs/core/Materials/Node/Blocks'
 
 
 import { type Theme, type System } from './world'
-import { setupStage, beatDecaySystem, beatRenderSystem } from './stage'
+import { setupStage, beatDecaySystem, createBeatRenderSystem } from './stage'
 
 const EYE_HEIGHT = 1.6
 
@@ -72,7 +72,7 @@ async function main(): Promise<void> {
 
     startGameLoop(scene, [
         beatDecaySystem,
-        beatRenderSystem,
+        createBeatRenderSystem(scene),
     ])
 
     engine.runRenderLoop(() => scene.render())

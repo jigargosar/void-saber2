@@ -153,14 +153,15 @@ export const beatDecaySystem: System = (dt) => {
     })
 }
 
-export const beatRenderSystem: System = () => {
-    world.query(BeatPulse, BeatVisuals).readEach(([pulse, visuals]) => {
-        if (!visuals.scene) return
-        visuals.scene.fogDensity = visuals.fogBaseDensity * (1 + 0.8 * pulse.intensity)
-        for (const { mat, baseColor } of visuals.pillarTargets) {
-            mat.emissiveColor = baseColor.scale(1 + 1.5 * pulse.intensity)
-        }
-    })
+export function createBeatRenderSystem(scene: Scene): System {
+    return () => {
+        world.query(BeatPulse, BeatVisuals).readEach(([pulse, visuals]) => {
+            scene.fogDensity = visuals.fogBaseDensity * (1 + 0.8 * pulse.intensity)
+            for (const { mat, baseColor } of visuals.pillarTargets) {
+                mat.emissiveColor = baseColor.scale(1 + 1.5 * pulse.intensity)
+            }
+        })
+    }
 }
 
 // ── Setup orchestrator ──────────────────────────────────────
@@ -175,7 +176,6 @@ export function setupStage(scene: Scene, theme: Theme): void {
     world.spawn(
         BeatPulse(),
         BeatVisuals({
-            scene,
             fogBaseDensity: FOG_DENSITY_BASE,
             pillarTargets,
             glow,
