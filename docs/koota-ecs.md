@@ -280,3 +280,22 @@ Relations = directed edges between nodes, optionally carrying edge data
 exclusive = at most one outgoing edge of this type
 autoRemoveTarget = destroying a node cascades to dependents
 ```
+
+### When to Use Relations
+
+The pattern: any time you'd reach for a foreign key, a lookup table, or a parent
+ID field — use a relation instead. You get type-safe querying, automatic cleanup,
+and no manual bookkeeping.
+
+**Scene graphs / hierarchies** — parent-child transforms. `ChildOf` with
+`autoRemoveTarget` gives cascading destroy for free. Destroying a spaceship
+destroys its turrets.
+
+**Inventory / containment** — `Contains` with `store: { amount: 0 }` models
+"entity A holds 10 of entity B" without a separate inventory data structure.
+
+**Targeting / combat** — `Targeting` with `exclusive: true` means a unit can only
+lock onto one enemy. Re-targeting just calls `add()` again — no manual cleanup.
+
+**Equipment slots** — `EquippedOn(player)` lets you query all equipped items for a
+player, or wildcard `EquippedOn('*')` for all equipped items globally.
