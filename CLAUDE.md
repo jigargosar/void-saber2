@@ -35,14 +35,7 @@ Flat `src/` layout — no subdirectories. Files are added as milestones progress
 
 ## ECS (Koota)
 
-Direct Koota API, no wrapper layer. Key patterns:
-
-- `trait(() => obj)` — callback traits (AoS) for Babylon.js object references
-- `trait()` — tag traits for entity-kind markers
-- `world.onQueryAdd([...traits], cb)` / `world.onQueryRemove([...traits], cb)` — lifecycle hooks
-- `world.spawn(Trait(value), ...)` — entity creation with initial trait values
-- `entity.destroy()` — cleanup (triggers onQueryRemove hooks)
-- `Not(Trait)` — query modifier for `.without()` equivalent
+Direct Koota API, no wrapper layer. Full API reference: `docs/reference/Koota-README.md`. Ignore all React APIs (`koota/react`, hooks, WorldProvider) — this is a vanilla Babylon.js project.
 
 ## Conventions
 

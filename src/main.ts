@@ -1,7 +1,12 @@
 import { Engine } from '@babylonjs/core/Engines/engine'
 import { Scene } from '@babylonjs/core/scene'
 import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera'
+import { WebXRDefaultExperience } from '@babylonjs/core/XR/webXRDefaultExperience'
 import { Vector3, Color3 } from '@babylonjs/core/Maths/math'
+
+import '@babylonjs/core/Helpers/sceneHelpers'
+import '@babylonjs/loaders/glTF'
+
 import { type Theme, type System } from './world'
 import { setupStage, beatDecaySystem, beatRenderSystem } from './stage'
 
@@ -18,6 +23,18 @@ function setupCamera(scene: Scene) {
     camera.attachControl()
 }
 
+async function setupWebXR(scene: Scene): Promise<WebXRDefaultExperience> {
+    const xr = await WebXRDefaultExperience.CreateAsync(scene, {
+        uiOptions: { sessionMode: 'immersive-vr' },
+        disableTeleportation: true,
+        disablePointerSelection: true,
+        disableNearInteraction: true,
+        disableHandTracking: true,
+        inputOptions: { doNotLoadControllerMeshes: true },
+    })
+    return xr
+}
+
 function startGameLoop(scene: Scene, systems: System[]): void {
     const engine = scene.getEngine()
     scene.onBeforeRenderObservable.add(() => {
@@ -28,7 +45,7 @@ function startGameLoop(scene: Scene, systems: System[]): void {
     })
 }
 
-function main(): void {
+async function main(): Promise<void> {
     const canvas = document.getElementById('canvas')
     if (!(canvas instanceof HTMLCanvasElement)) {
         throw new Error('Canvas element not found')
@@ -39,6 +56,7 @@ function main(): void {
 
     setupStage(scene, theme)
     setupCamera(scene)
+    setupWebXR(scene).catch(console.error)
 
     startGameLoop(scene, [
         beatDecaySystem,
@@ -49,4 +67,4 @@ function main(): void {
     window.addEventListener('resize', () => engine.resize())
 }
 
-main()
+main().catch(console.error)
