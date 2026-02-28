@@ -1,3 +1,5 @@
+SUPERSEDED — ECS dropped. See architecture-drop-ecs.md and architecture-drop-ecs-conversation-summary.md.
+
 Architecture Review — ECS + Babylon.js + Koota
 
 Conducted after milestone 2 (engine + scene + environment). Four expert agents

@@ -29,22 +29,21 @@ No test runner or linter is configured.
 
 # Architecture
 
-VR Beat Saber clone: Babylon.js (3D/WebXR) + Koota (ECS).
+VR Beat Saber clone: Babylon.js (3D/WebXR), domain modules with closures.
 
 Flat `src/` layout — no subdirectories. Files are added as milestones progress.
 
-## ECS (Koota)
+## Module Architecture
 
-Direct Koota API, no wrapper layer. Full API reference: `docs/reference/Koota-README.md`. Ignore all React APIs (`koota/react`, hooks, WorldProvider) — this is a vanilla Babylon.js project.
+No ECS. Domain modules own their data via closures. Composition root (main.ts) wires modules together. Each module exposes: setup function → handle, system function (per-frame), teardown. Shared types in `types.ts`, system pipeline infrastructure in `pipeline.ts`.
 
 ## Conventions
 
 - **`dispose(false, true)`**: Disposes node + materials + textures for full cleanup.
 - **Trail mesh**: 120 vertices (60 samples x 2), mutable Float32Array buffers updated via `updateVerticesData`.
-- **Theme**: `Hand` type alias, `Theme` interface (leftHand/rightHand colors), `handColor()` lookup.
+- **Theme**: `Hand` type alias, `Theme` interface (leftHand/rightHand colors), `handColor()` lookup — defined in `types.ts`.
 
 ## Key Dependencies
 
 - `@babylonjs/core`, `@babylonjs/loaders` — 3D engine + WebXR
-- `koota` — ECS
 - `tone`, `tonal` — audio synthesis + music theory
