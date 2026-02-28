@@ -11,23 +11,10 @@ Beat Saber clone. Babylon.js + WebXR.
 - Menu/results: Full state machine — menu → countdown → playing → paused → results.
 - Scope: All 23 steps. No shortcuts.
 
-## Porting Milestones
-
-Incremental steps — each is a standalone checkpoint you can run and verify.
-
-1. Babylon engine + scene — dark void, camera, fog, renders to canvas
-2. Environment — track, pillars, ribs, glow, the visual arena
-3. WebXR session — "Enter VR" button, immersive-vr starts on Quest
-4. ECS world + input bridge — controllers spawn Koota entities (no visuals yet)
-5. Saber geometry + visual pipeline — sabers appear on controllers
-6. Grip bind + trails — sabers track grip, trails render behind blades
-7. Collision + effects — saber clash, sparks + haptics
-8. Music + beat flash — audio plays, pillars/fog pulse on beat
-
 ## Build Steps
 
-1. Corridor — dark void, neon edge lines, glowing pillars, GlowLayer, fog
-2. WebXR session — enter VR, corridor looks correct in headset
+1. Corridor — dark void, neon edge lines, glowing pillars, GlowLayer, fog — DONE
+2. WebXR session — enter VR, corridor looks correct in headset — DONE
 3. Controller tracking — see controller positions in VR
 4. Sabers — blade + handle + glow, attached to controllers, cyan left magenta right
 5. Saber trails — ribbon behind blade tip, fades along tail
