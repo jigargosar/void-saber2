@@ -1,7 +1,6 @@
 import { createWorld, trait } from 'koota'
 import { type Color3 } from '@babylonjs/core/Maths/math'
 import { type StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
-import { type GlowLayer } from '@babylonjs/core/Layers/glowLayer'
 
 // ── Koota world ─────────────────────────────────────────────
 
@@ -34,10 +33,7 @@ export const BeatPulse = trait(() => ({ intensity: 0 }))
 export const BeatVisuals = trait((): {
     fogBaseDensity: number
     pillarTargets: PillarPulseTarget[]
-    glow: GlowLayer | null
 } => ({
     fogBaseDensity: 0,
     pillarTargets: [],
-    glow: null,
 }))
-

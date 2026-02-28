@@ -137,12 +137,6 @@ function setupPillars(theme: Theme): PillarPulseTarget[] {
     return targets
 }
 
-// ── Cleanup (ECS lifecycle) ─────────────────────────────────
-
-world.onQueryRemove([BeatVisuals], (entity) => {
-    const visuals = entity.get(BeatVisuals)
-    if (visuals?.glow) visuals.glow.dispose()
-})
 
 // ── Systems (ECS — run every frame) ─────────────────────────
 
@@ -175,10 +169,8 @@ export function setupStage(scene: Scene, theme: Theme): void {
 
     world.spawn(
         BeatPulse(),
-        BeatVisuals({
-            fogBaseDensity: FOG_DENSITY_BASE,
-            pillarTargets,
-            glow,
-        }),
+        BeatVisuals({ fogBaseDensity: FOG_DENSITY_BASE, pillarTargets }),
     )
+
+    world.onQueryRemove([BeatVisuals], () => glow.dispose())
 }
