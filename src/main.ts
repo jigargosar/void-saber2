@@ -27,10 +27,15 @@ async function setupWebXR(scene: Scene): Promise<WebXRDefaultExperience> {
     const xr = await WebXRDefaultExperience.CreateAsync(scene, {
         uiOptions: { sessionMode: 'immersive-vr' },
         disableTeleportation: true,
-        disablePointerSelection: true,
-        disableNearInteraction: true,
-        disableHandTracking: true,
-        inputOptions: { doNotLoadControllerMeshes: true },
+        disablePointerSelection: false,
+        disableNearInteraction: false,
+        disableHandTracking: false,
+        inputOptions: {
+            doNotLoadControllerMeshes: false,
+            disableControllerAnimation: false,
+            disableOnlineControllerRepository: false,
+            controllerOptions: {},
+        },
     })
     return xr
 }
