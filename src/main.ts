@@ -52,7 +52,7 @@ function startGameLoop(scene: Scene, systems: System[]): void {
     })
 }
 
-async function main(): Promise<void> {
+function createScene() {
     const canvas = document.getElementById('canvas')
     if (!(canvas instanceof HTMLCanvasElement)) {
         throw new Error('Canvas element not found')
@@ -60,6 +60,11 @@ async function main(): Promise<void> {
 
     const engine = new Engine(canvas, true)
     const scene = new Scene(engine)
+    return { engine, scene }
+}
+
+async function main(): Promise<void> {
+    const { engine, scene } = createScene()
 
     setupStage(scene, theme)
     setupCamera(scene)

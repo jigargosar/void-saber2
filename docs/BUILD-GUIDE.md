@@ -13,7 +13,7 @@ Beat Saber clone. Babylon.js + WebXR.
 
 ## ECS Cleanup (before step 3)
 
-1. Use `updateEach`/`readEach` in systems — replace `for..of` + `entity.get()` + null checks
+1. NOT DONE: Use `updateEach`/`readEach` in systems — replace `for..of` + `entity.get()` + null checks
 2. Scene and Theme as world traits — `world.add(SceneRef)`, `world.add(ThemeRef)` instead of passing as parameters
 3. Remove redundant `scene` ref from `BeatVisuals` trait once SceneRef world trait exists
 4. Move `PillarPulseTarget` interface to `world.ts` — it's part of trait data
