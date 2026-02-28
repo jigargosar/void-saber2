@@ -3,7 +3,7 @@ import { Scene } from '@babylonjs/core/scene'
 import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera'
 import { Vector3, Color3 } from '@babylonjs/core/Maths/math'
 import { type Theme } from './world'
-import { createEnvironment } from './environment'
+import { createArena } from './environment'
 
 const EYE_HEIGHT = 1.6
 
@@ -27,7 +27,7 @@ function main(): void {
     const engine = new Engine(canvas, true)
     const scene = new Scene(engine)
 
-    createEnvironment(scene, theme)
+    createArena(scene, theme)
     setupCamera(scene)
 
     engine.runRenderLoop(() => scene.render())

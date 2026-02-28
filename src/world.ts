@@ -7,7 +7,7 @@ export const world = createWorld()
 
 // ── Traits ──────────────────────────────────────────────────
 
-export const BeatFlash = trait(() => ({ intensity: 0 }))
+export const BeatPulse = trait(() => ({ intensity: 0 }))
 
 // ── Theme ───────────────────────────────────────────────────
 

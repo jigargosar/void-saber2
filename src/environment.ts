@@ -5,9 +5,9 @@ import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight'
 import { PointLight } from '@babylonjs/core/Lights/pointLight'
 import { GlowLayer } from '@babylonjs/core/Layers/glowLayer'
 import { Vector3, Color3, Color4 } from '@babylonjs/core/Maths/math'
-import { type Theme, world, BeatFlash } from './world'
+import { type Theme, world, BeatPulse } from './world'
 
-const BG = new Color3(0.01, 0.01, 0.03)
+const BG_COLOR = new Color3(0.01, 0.01, 0.03)
 const FOG_BASE = 0.04
 const PILLAR_COUNT = 14
 const PILLAR_GAP = 6
@@ -16,13 +16,13 @@ const TRACK_HALF = 100
 const RIB_COUNT = 20
 const RIB_GAP = 10
 
-interface PillarSnapshot {
+interface PillarPulseTarget {
     readonly mat: StandardMaterial
     readonly baseColor: Color3
 }
 
-export interface Environment {
-    onBeat(): void
+export interface Arena {
+    triggerBeat(): void
     dispose(): void
     createBeatDecaySystem(getDelta: () => number): () => void
     createBeatRenderSystem(): () => void
@@ -31,10 +31,10 @@ export interface Environment {
 // ── Setup functions ─────────────────────────────────────────
 
 function setupAtmosphere(scene: Scene): void {
-    scene.clearColor = new Color4(BG.r, BG.g, BG.b, 1)
+    scene.clearColor = new Color4(BG_COLOR.r, BG_COLOR.g, BG_COLOR.b, 1)
     scene.fogMode = Scene.FOGMODE_EXP2
     scene.fogDensity = FOG_BASE
-    scene.fogColor = BG
+    scene.fogColor = BG_COLOR
 }
 
 function setupLighting(scene: Scene): GlowLayer {
@@ -107,8 +107,8 @@ function setupRibs(theme: Theme): void {
     }
 }
 
-function setupPillars(theme: Theme): PillarSnapshot[] {
-    const snapshots: PillarSnapshot[] = []
+function setupPillars(theme: Theme): PillarPulseTarget[] {
+    const snapshots: PillarPulseTarget[] = []
     const pillarStart = Math.floor(PILLAR_COUNT / 2) * PILLAR_GAP
 
     for (let i = 0; i < PILLAR_COUNT; i++) {
@@ -150,26 +150,26 @@ function setupPillars(theme: Theme): PillarSnapshot[] {
 
 export function createBeatDecaySystem(getDelta: () => number): () => void {
     return () => {
-        for (const entity of world.query(BeatFlash)) {
-            const flash = entity.get(BeatFlash)
-            if (!flash || flash.intensity <= 0) continue
+        for (const entity of world.query(BeatPulse)) {
+            const pulse = entity.get(BeatPulse)
+            if (!pulse || pulse.intensity <= 0) continue
             const dt = getDelta()
-            flash.intensity = Math.max(0, flash.intensity - dt / 0.12)
+            pulse.intensity = Math.max(0, pulse.intensity - dt / 0.12)
         }
     }
 }
 
 export function createBeatRenderSystem(
     scene: Scene,
-    pillarSnapshots: PillarSnapshot[],
+    pillarSnapshots: PillarPulseTarget[],
 ): () => void {
     return () => {
-        for (const entity of world.query(BeatFlash)) {
-            const flash = entity.get(BeatFlash)
-            if (!flash) continue
-            scene.fogDensity = FOG_BASE * (1 + 0.8 * flash.intensity)
+        for (const entity of world.query(BeatPulse)) {
+            const pulse = entity.get(BeatPulse)
+            if (!pulse) continue
+            scene.fogDensity = FOG_BASE * (1 + 0.8 * pulse.intensity)
             for (const { mat, baseColor } of pillarSnapshots) {
-                mat.emissiveColor = baseColor.scale(1 + 1.5 * flash.intensity)
+                mat.emissiveColor = baseColor.scale(1 + 1.5 * pulse.intensity)
             }
         }
     }
@@ -177,19 +177,19 @@ export function createBeatRenderSystem(
 
 // ── Orchestrator ────────────────────────────────────────────
 
-export function createEnvironment(scene: Scene, theme: Theme): Environment {
+export function createArena(scene: Scene, theme: Theme): Arena {
     setupAtmosphere(scene)
     const glow = setupLighting(scene)
     setupTrack()
     setupRibs(theme)
     const pillarSnapshots = setupPillars(theme)
 
-    const beatEntity = world.spawn(BeatFlash())
+    const beatEntity = world.spawn(BeatPulse())
 
     return {
-        onBeat() {
-            const flash = beatEntity.get(BeatFlash)
-            if (flash) flash.intensity = 1
+        triggerBeat() {
+            const pulse = beatEntity.get(BeatPulse)
+            if (pulse) pulse.intensity = 1
         },
         dispose() {
             beatEntity.destroy()
