@@ -10,6 +10,7 @@ Beat Saber clone. Babylon.js + WebXR.
 - Songs: 3 songs, each a fixed beatmap + fixed BPM. Different tempos for variety.
 - Menu/results: Full state machine — menu → countdown → playing → paused → results.
 - Scope: All 23 steps. No shortcuts.
+- ECS: Evaluated Koota and Miniplex. Koota's trait factories can't type external Babylon.js objects without nullable defaults — the dominant data pattern across all 23 steps. Miniplex handles this cleanly via `world.add(entity, component)` with full type narrowing on queries — the best TypeScript ECS available. Dropped because development has stalled. Entity inventory (2 controllers, 2 sabers, 2 trails, ~100 pooled cubes) doesn't justify ECS anyway — domain modules with closures suffice. Expand this section as needed, referencing how Miniplex achieved its typesafety.
 
 ## Build Steps
 
