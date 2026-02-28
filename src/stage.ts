@@ -8,11 +8,11 @@ import { Vector3, Color3, Color4 } from '@babylonjs/core/Maths/math'
 import { type Theme, world, BeatPulse } from './world'
 
 const BG_COLOR = new Color3(0.01, 0.01, 0.03)
-const FOG_BASE = 0.04
+const FOG_DENSITY_BASE = 0.04
 const PILLAR_COUNT = 14
 const PILLAR_GAP = 6
 const PILLAR_X = 6
-const TRACK_HALF = 100
+const TRACK_HALF_LENGTH = 100
 const RIB_COUNT = 20
 const RIB_GAP = 10
 
@@ -21,7 +21,7 @@ interface PillarPulseTarget {
     readonly baseColor: Color3
 }
 
-export interface Arena {
+export interface Stage {
     triggerBeat(): void
     dispose(): void
     createBeatDecaySystem(getDelta: () => number): () => void
@@ -33,7 +33,7 @@ export interface Arena {
 function setupAtmosphere(scene: Scene): void {
     scene.clearColor = new Color4(BG_COLOR.r, BG_COLOR.g, BG_COLOR.b, 1)
     scene.fogMode = Scene.FOGMODE_EXP2
-    scene.fogDensity = FOG_BASE
+    scene.fogDensity = FOG_DENSITY_BASE
     scene.fogColor = BG_COLOR
 }
 
@@ -64,7 +64,7 @@ function setupTrack(): void {
     trackMat.diffuseColor = new Color3(0.02, 0.02, 0.03)
     trackMat.specularColor = Color3.Black()
 
-    const track = MeshBuilder.CreateGround('track', { width: 4, height: TRACK_HALF * 2 })
+    const track = MeshBuilder.CreateGround('track', { width: 4, height: TRACK_HALF_LENGTH * 2 })
     track.material = trackMat
 
     const edgeMatL = new StandardMaterial('edgeLeft')
@@ -75,11 +75,11 @@ function setupTrack(): void {
     edgeMatR.emissiveColor = Color3.White()
     edgeMatR.disableLighting = true
 
-    const edgeL = MeshBuilder.CreateBox('edgeL', { width: 0.03, height: 0.02, depth: TRACK_HALF * 2 })
+    const edgeL = MeshBuilder.CreateBox('edgeL', { width: 0.03, height: 0.02, depth: TRACK_HALF_LENGTH * 2 })
     edgeL.position.set(-2, 0.01, 0)
     edgeL.material = edgeMatL
 
-    const edgeR = MeshBuilder.CreateBox('edgeR', { width: 0.03, height: 0.02, depth: TRACK_HALF * 2 })
+    const edgeR = MeshBuilder.CreateBox('edgeR', { width: 0.03, height: 0.02, depth: TRACK_HALF_LENGTH * 2 })
     edgeR.position.set(2, 0.01, 0)
     edgeR.material = edgeMatR
 }
@@ -108,42 +108,42 @@ function setupRibs(theme: Theme): void {
 }
 
 function setupPillars(theme: Theme): PillarPulseTarget[] {
-    const snapshots: PillarPulseTarget[] = []
+    const targets: PillarPulseTarget[] = []
     const pillarStart = Math.floor(PILLAR_COUNT / 2) * PILLAR_GAP
 
     for (let i = 0; i < PILLAR_COUNT; i++) {
         const z = pillarStart - i * PILLAR_GAP
 
-        const mL = new StandardMaterial(`pillarMatL${i}`)
-        mL.emissiveColor = new Color3(0.4, 0, 0.6)
-        mL.disableLighting = true
-        const pL = MeshBuilder.CreateCylinder(`pillarL${i}`, { height: 8, diameter: 0.12, tessellation: 12 })
-        pL.position.set(PILLAR_X, 2, z)
-        pL.material = mL
-        snapshots.push({ mat: mL, baseColor: mL.emissiveColor.clone() })
+        const matLeft = new StandardMaterial(`pillarMatL${i}`)
+        matLeft.emissiveColor = new Color3(0.4, 0, 0.6)
+        matLeft.disableLighting = true
+        const pillarLeft = MeshBuilder.CreateCylinder(`pillarL${i}`, { height: 8, diameter: 0.12, tessellation: 12 })
+        pillarLeft.position.set(PILLAR_X, 2, z)
+        pillarLeft.material = matLeft
+        targets.push({ mat: matLeft, baseColor: matLeft.emissiveColor.clone() })
 
-        const mR = new StandardMaterial(`pillarMatR${i}`)
-        mR.emissiveColor = new Color3(0.4, 0, 0.6)
-        mR.disableLighting = true
-        const pR = MeshBuilder.CreateCylinder(`pillarR${i}`, { height: 8, diameter: 0.12, tessellation: 12 })
-        pR.position.set(-PILLAR_X, 2, z)
-        pR.material = mR
-        snapshots.push({ mat: mR, baseColor: mR.emissiveColor.clone() })
+        const matRight = new StandardMaterial(`pillarMatR${i}`)
+        matRight.emissiveColor = new Color3(0.4, 0, 0.6)
+        matRight.disableLighting = true
+        const pillarRight = MeshBuilder.CreateCylinder(`pillarR${i}`, { height: 8, diameter: 0.12, tessellation: 12 })
+        pillarRight.position.set(-PILLAR_X, 2, z)
+        pillarRight.material = matRight
+        targets.push({ mat: matRight, baseColor: matRight.emissiveColor.clone() })
 
         if (i < 2) {
-            const lL = new PointLight(`pointL${i}`, new Vector3(-PILLAR_X, 0.5, z))
-            lL.diffuse = theme.leftHand
-            lL.intensity = 0.5
-            lL.range = 4
+            const lightLeft = new PointLight(`pointL${i}`, new Vector3(-PILLAR_X, 0.5, z))
+            lightLeft.diffuse = theme.leftHand
+            lightLeft.intensity = 0.5
+            lightLeft.range = 4
 
-            const lR = new PointLight(`pointR${i}`, new Vector3(PILLAR_X, 0.5, z))
-            lR.diffuse = theme.rightHand
-            lR.intensity = 0.5
-            lR.range = 4
+            const lightRight = new PointLight(`pointR${i}`, new Vector3(PILLAR_X, 0.5, z))
+            lightRight.diffuse = theme.rightHand
+            lightRight.intensity = 0.5
+            lightRight.range = 4
         }
     }
 
-    return snapshots
+    return targets
 }
 
 // ── Beat systems ────────────────────────────────────────────
@@ -161,14 +161,14 @@ export function createBeatDecaySystem(getDelta: () => number): () => void {
 
 export function createBeatRenderSystem(
     scene: Scene,
-    pillarSnapshots: PillarPulseTarget[],
+    pillarTargets: PillarPulseTarget[],
 ): () => void {
     return () => {
         for (const entity of world.query(BeatPulse)) {
             const pulse = entity.get(BeatPulse)
             if (!pulse) continue
-            scene.fogDensity = FOG_BASE * (1 + 0.8 * pulse.intensity)
-            for (const { mat, baseColor } of pillarSnapshots) {
+            scene.fogDensity = FOG_DENSITY_BASE * (1 + 0.8 * pulse.intensity)
+            for (const { mat, baseColor } of pillarTargets) {
                 mat.emissiveColor = baseColor.scale(1 + 1.5 * pulse.intensity)
             }
         }
@@ -177,12 +177,12 @@ export function createBeatRenderSystem(
 
 // ── Orchestrator ────────────────────────────────────────────
 
-export function createArena(scene: Scene, theme: Theme): Arena {
+export function createStage(scene: Scene, theme: Theme): Stage {
     setupAtmosphere(scene)
     const glow = setupLighting(scene)
     setupTrack()
     setupRibs(theme)
-    const pillarSnapshots = setupPillars(theme)
+    const pillarTargets = setupPillars(theme)
 
     const beatEntity = world.spawn(BeatPulse())
 
@@ -196,6 +196,6 @@ export function createArena(scene: Scene, theme: Theme): Arena {
             glow.dispose()
         },
         createBeatDecaySystem: (getDelta) => createBeatDecaySystem(getDelta),
-        createBeatRenderSystem: () => createBeatRenderSystem(scene, pillarSnapshots),
+        createBeatRenderSystem: () => createBeatRenderSystem(scene, pillarTargets),
     }
 }
