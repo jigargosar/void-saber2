@@ -8,9 +8,9 @@ Board
 
 # InProgress
 
-- Drop ECS, establish module architecture
-
 # Done
+
+- Drop ECS, establish module architecture
 
 # Backlog
 
