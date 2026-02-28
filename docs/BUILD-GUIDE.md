@@ -11,6 +11,16 @@ Beat Saber clone. Babylon.js + WebXR.
 - Menu/results: Full state machine — menu → countdown → playing → paused → results.
 - Scope: All 23 steps. No shortcuts.
 
+## ECS Cleanup (before step 3)
+
+1. Use `updateEach`/`readEach` in systems — replace `for..of` + `entity.get()` + null checks
+2. Scene and Theme as world traits — `world.add(SceneRef)`, `world.add(ThemeRef)` instead of passing as parameters
+3. Remove redundant `scene` ref from `BeatVisuals` trait once SceneRef world trait exists
+4. Move `PillarPulseTarget` interface to `world.ts` — it's part of trait data
+5. Rename `BeatPulse` — name doesn't convey what it represents
+6. Rename `triggerBeat` + extract magic number (`intensity = 1`)
+7. Systems as plain functions via `updateEach` — no factories, no closures
+
 ## Build Steps
 
 1. Corridor — dark void, neon edge lines, glowing pillars, GlowLayer, fog — DONE
