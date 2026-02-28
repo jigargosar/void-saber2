@@ -44,17 +44,3 @@ export const BeatVisuals = trait((): {
     glow: null,
 }))
 
-// ── Queries ─────────────────────────────────────────────────
-
-export function beatPulses() {
-    return world.query(BeatPulse, BeatVisuals)
-}
-
-// ── Actions ─────────────────────────────────────────────────
-
-export function triggerBeat(): void {
-    for (const entity of world.query(BeatPulse)) {
-        const pulse = entity.get(BeatPulse)
-        if (pulse) pulse.intensity = 1
-    }
-}

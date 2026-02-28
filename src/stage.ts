@@ -7,7 +7,7 @@ import { GlowLayer } from '@babylonjs/core/Layers/glowLayer'
 import { Vector3, Color3, Color4 } from '@babylonjs/core/Maths/math'
 import {
     type Theme, type PillarPulseTarget, type System,
-    world, BeatPulse, BeatVisuals, beatPulses,
+    world, BeatPulse, BeatVisuals,
 } from './world'
 
 const BG_COLOR = new Color3(0.01, 0.01, 0.03)
@@ -147,23 +147,20 @@ world.onQueryRemove([BeatVisuals], (entity) => {
 // ── Systems (ECS — run every frame) ─────────────────────────
 
 export const beatDecaySystem: System = (dt) => {
-    for (const entity of beatPulses()) {
-        const pulse = entity.get(BeatPulse)
-        if (!pulse || pulse.intensity <= 0) continue
+    world.query(BeatPulse).updateEach(([pulse]) => {
+        if (pulse.intensity <= 0) return
         pulse.intensity = Math.max(0, pulse.intensity - dt / 0.12)
-    }
+    })
 }
 
 export const beatRenderSystem: System = () => {
-    for (const entity of beatPulses()) {
-        const pulse = entity.get(BeatPulse)
-        const visuals = entity.get(BeatVisuals)
-        if (!pulse || !visuals || !visuals.scene) continue
+    world.query(BeatPulse, BeatVisuals).readEach(([pulse, visuals]) => {
+        if (!visuals.scene) return
         visuals.scene.fogDensity = visuals.fogBaseDensity * (1 + 0.8 * pulse.intensity)
         for (const { mat, baseColor } of visuals.pillarTargets) {
             mat.emissiveColor = baseColor.scale(1 + 1.5 * pulse.intensity)
         }
-    }
+    })
 }
 
 // ── Setup orchestrator ──────────────────────────────────────
