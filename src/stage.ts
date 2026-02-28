@@ -5,10 +5,12 @@ import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight'
 import { PointLight } from '@babylonjs/core/Lights/pointLight'
 import { GlowLayer } from '@babylonjs/core/Layers/glowLayer'
 import { Vector3, Color3, Color4 } from '@babylonjs/core/Maths/math'
-import {
-    type Theme, type PillarPulseTarget, type System,
-    world, BeatPulse, BeatVisuals,
-} from './world'
+import { type Theme, type Seconds, type System } from './types'
+
+interface PillarPulseTarget {
+    readonly mat: StandardMaterial
+    readonly baseColor: Color3
+}
 
 const BG_COLOR = new Color3(0.01, 0.01, 0.03)
 const FOG_DENSITY_BASE = 0.04
@@ -137,40 +139,42 @@ function setupPillars(theme: Theme): PillarPulseTarget[] {
     return targets
 }
 
+// ── Environment module ───────────────────────────────────────
 
-// ── Systems (ECS — run every frame) ─────────────────────────
-
-export const beatDecaySystem: System = (dt) => {
-    world.query(BeatPulse).updateEach(([pulse]) => {
-        if (pulse.intensity <= 0) return
-        pulse.intensity = Math.max(0, pulse.intensity - dt / 0.12)
-    })
+export interface Environment {
+    onBeat(): void
+    createBeatDecaySystem(): System
+    dispose(): void
 }
 
-export function createBeatRenderSystem(scene: Scene): System {
-    return () => {
-        world.query(BeatPulse, BeatVisuals).readEach(([pulse, visuals]) => {
-            scene.fogDensity = visuals.fogBaseDensity * (1 + 0.8 * pulse.intensity)
-            for (const { mat, baseColor } of visuals.pillarTargets) {
-                mat.emissiveColor = baseColor.scale(1 + 1.5 * pulse.intensity)
-            }
-        })
-    }
-}
-
-// ── Setup orchestrator ──────────────────────────────────────
-
-export function setupStage(scene: Scene, theme: Theme): void {
+export function createEnvironment(scene: Scene, theme: Theme): Environment {
     setupAtmosphere(scene)
     const glow = setupLighting(scene)
     setupTrack()
     setupRibs(theme)
     const pillarTargets = setupPillars(theme)
 
-    world.spawn(
-        BeatPulse(),
-        BeatVisuals({ fogBaseDensity: FOG_DENSITY_BASE, pillarTargets }),
-    )
+    let beatFlash = 0
 
-    world.onQueryRemove([BeatVisuals], () => glow.dispose())
+    return {
+        onBeat() {
+            beatFlash = 1
+        },
+
+        createBeatDecaySystem(): System {
+            return (dt: Seconds) => {
+                if (beatFlash <= 0) return
+                beatFlash = Math.max(0, beatFlash - dt / 0.12)
+
+                scene.fogDensity = FOG_DENSITY_BASE * (1 + 0.8 * beatFlash)
+                for (const { mat, baseColor } of pillarTargets) {
+                    mat.emissiveColor = baseColor.scale(1 + 1.5 * beatFlash)
+                }
+            }
+        },
+
+        dispose() {
+            glow.dispose()
+        },
+    }
 }

@@ -9,8 +9,8 @@ import '@babylonjs/loaders/glTF'
 import '@babylonjs/core/Materials/Node/Blocks'
 
 
-import { type Theme, type System } from './world'
-import { setupStage, beatDecaySystem, createBeatRenderSystem } from './stage'
+import { type Theme, type System } from './types'
+import { createEnvironment } from './stage'
 
 const EYE_HEIGHT = 1.6
 
@@ -66,13 +66,12 @@ function createScene() {
 async function main(): Promise<void> {
     const { engine, scene } = createScene()
 
-    setupStage(scene, theme)
+    const environment = createEnvironment(scene, theme)
     setupCamera(scene)
     setupWebXR(scene).catch(console.error)
 
     startGameLoop(scene, [
-        beatDecaySystem,
-        createBeatRenderSystem(scene),
+        environment.createBeatDecaySystem(),
     ])
 
     engine.runRenderLoop(() => scene.render())
