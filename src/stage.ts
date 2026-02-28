@@ -5,7 +5,10 @@ import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight'
 import { PointLight } from '@babylonjs/core/Lights/pointLight'
 import { GlowLayer } from '@babylonjs/core/Layers/glowLayer'
 import { Vector3, Color3, Color4 } from '@babylonjs/core/Maths/math'
-import { type Theme, world, BeatPulse } from './world'
+import {
+    type Theme, type PillarPulseTarget, type System,
+    world, BeatPulse, BeatVisuals, beatPulses,
+} from './world'
 
 const BG_COLOR = new Color3(0.01, 0.01, 0.03)
 const FOG_DENSITY_BASE = 0.04
@@ -16,19 +19,7 @@ const TRACK_HALF_LENGTH = 100
 const RIB_COUNT = 20
 const RIB_GAP = 10
 
-interface PillarPulseTarget {
-    readonly mat: StandardMaterial
-    readonly baseColor: Color3
-}
-
-export interface Stage {
-    triggerBeat(): void
-    dispose(): void
-    createBeatDecaySystem(getDelta: () => number): () => void
-    createBeatRenderSystem(): () => void
-}
-
-// ── Setup functions ─────────────────────────────────────────
+// ── Setup (runs once, builds geometry) ──────────────────────
 
 function setupAtmosphere(scene: Scene): void {
     scene.clearColor = new Color4(BG_COLOR.r, BG_COLOR.g, BG_COLOR.b, 1)
@@ -146,56 +137,51 @@ function setupPillars(theme: Theme): PillarPulseTarget[] {
     return targets
 }
 
-// ── Beat systems ────────────────────────────────────────────
+// ── Cleanup (ECS lifecycle) ─────────────────────────────────
 
-export function createBeatDecaySystem(getDelta: () => number): () => void {
-    return () => {
-        for (const entity of world.query(BeatPulse)) {
-            const pulse = entity.get(BeatPulse)
-            if (!pulse || pulse.intensity <= 0) continue
-            const dt = getDelta()
-            pulse.intensity = Math.max(0, pulse.intensity - dt / 0.12)
+world.onQueryRemove([BeatVisuals], (entity) => {
+    const visuals = entity.get(BeatVisuals)
+    if (visuals?.glow) visuals.glow.dispose()
+})
+
+// ── Systems (ECS — run every frame) ─────────────────────────
+
+export const beatDecaySystem: System = (dt) => {
+    for (const entity of beatPulses()) {
+        const pulse = entity.get(BeatPulse)
+        if (!pulse || pulse.intensity <= 0) continue
+        pulse.intensity = Math.max(0, pulse.intensity - dt / 0.12)
+    }
+}
+
+export const beatRenderSystem: System = () => {
+    for (const entity of beatPulses()) {
+        const pulse = entity.get(BeatPulse)
+        const visuals = entity.get(BeatVisuals)
+        if (!pulse || !visuals || !visuals.scene) continue
+        visuals.scene.fogDensity = visuals.fogBaseDensity * (1 + 0.8 * pulse.intensity)
+        for (const { mat, baseColor } of visuals.pillarTargets) {
+            mat.emissiveColor = baseColor.scale(1 + 1.5 * pulse.intensity)
         }
     }
 }
 
-export function createBeatRenderSystem(
-    scene: Scene,
-    pillarTargets: PillarPulseTarget[],
-): () => void {
-    return () => {
-        for (const entity of world.query(BeatPulse)) {
-            const pulse = entity.get(BeatPulse)
-            if (!pulse) continue
-            scene.fogDensity = FOG_DENSITY_BASE * (1 + 0.8 * pulse.intensity)
-            for (const { mat, baseColor } of pillarTargets) {
-                mat.emissiveColor = baseColor.scale(1 + 1.5 * pulse.intensity)
-            }
-        }
-    }
-}
+// ── Setup orchestrator ──────────────────────────────────────
 
-// ── Orchestrator ────────────────────────────────────────────
-
-export function createStage(scene: Scene, theme: Theme): Stage {
+export function setupStage(scene: Scene, theme: Theme): void {
     setupAtmosphere(scene)
     const glow = setupLighting(scene)
     setupTrack()
     setupRibs(theme)
     const pillarTargets = setupPillars(theme)
 
-    const beatEntity = world.spawn(BeatPulse())
-
-    return {
-        triggerBeat() {
-            const pulse = beatEntity.get(BeatPulse)
-            if (pulse) pulse.intensity = 1
-        },
-        dispose() {
-            beatEntity.destroy()
-            glow.dispose()
-        },
-        createBeatDecaySystem: (getDelta) => createBeatDecaySystem(getDelta),
-        createBeatRenderSystem: () => createBeatRenderSystem(scene, pillarTargets),
-    }
+    world.spawn(
+        BeatPulse(),
+        BeatVisuals({
+            scene,
+            fogBaseDensity: FOG_DENSITY_BASE,
+            pillarTargets,
+            glow,
+        }),
+    )
 }
