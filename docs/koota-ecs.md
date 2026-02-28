@@ -1,6 +1,121 @@
 Koota ECS — Traits & Relations Reference
 Pinned to koota@1.1.1
 
+## Concepts Cheatsheet
+
+```
++-----+=======================+=============================================+
+| #   | Concept               | Summary                                     |
++-----+=======================+=============================================+
+|     | BUILDING BLOCKS                                                     |
++-----+-----------------------+---------------------------------------------+
+| 1   | trait (schema)        | Flat primitive data, SoA storage,           |
+|     |                       | get() returns snapshot                      |
++-----+-----------------------+---------------------------------------------+
+| 2   | trait (callback)      | Function returning object, AoS storage,     |
+|     |                       | get() returns reference                     |
++-----+-----------------------+---------------------------------------------+
+| 3   | trait (tag)           | No data, boolean presence flag              |
++-----+-----------------------+---------------------------------------------+
+| 4   | entity                | Number encoding world+generation+id,        |
+|     |                       | auto-recycled, decode with entity.id()      |
++-----+-----------------------+---------------------------------------------+
+| 5   | world                 | Top-level container, stores all data,       |
+|     |                       | entities don't hold data themselves          |
++-----+-----------------------+---------------------------------------------+
+| 6   | trait record          | State of one entity-trait pair.              |
+|     |                       | SoA = snapshot, AoS = ref                   |
++-----+-----------------------+---------------------------------------------+
+| 7   | world traits          | Singletons/global resources,                |
+|     |                       | NOT queryable                               |
++-----+-----------------------+---------------------------------------------+
+|     | QUERYING                                                            |
++-----+-----------------------+---------------------------------------------+
+| 8   | query                 | Find entities sharing a set of traits       |
++-----+-----------------------+---------------------------------------------+
+| 9   | defineQuery           | Pre-cached query, avoids hashing overhead   |
++-----+-----------------------+---------------------------------------------+
+| 10  | updateEach            | Iterate + mutate, writes back, fires        |
+|     |                       | change detection                            |
++-----+-----------------------+---------------------------------------------+
+| 11  | readEach              | Read-only iteration, no change detection    |
++-----+-----------------------+---------------------------------------------+
+| 12  | forEach / for..of     | Standard entity iteration                   |
++-----+-----------------------+---------------------------------------------+
+| 13  | select                | Narrow which traits updateEach receives     |
++-----+-----------------------+---------------------------------------------+
+| 14  | useStores             | Direct SoA array access, max perf,          |
+|     |                       | bypasses safety                             |
++-----+-----------------------+---------------------------------------------+
+| 15  | queryFirst            | Returns first matching entity or undefined  |
++-----+-----------------------+---------------------------------------------+
+| 16  | IsExcluded            | Built-in tag, hides entity from all queries |
++-----+-----------------------+---------------------------------------------+
+|     | QUERY MODIFIERS                                                     |
++-----+-----------------------+---------------------------------------------+
+| 17  | Not(T)                | Exclude entities with trait T               |
++-----+-----------------------+---------------------------------------------+
+| 18  | Or(A, B)              | Logical OR (default is AND)                 |
++-----+-----------------------+---------------------------------------------+
+| 19  | Added(T)              | Gained T since last query run (stateful)    |
++-----+-----------------------+---------------------------------------------+
+| 20  | Removed(T)            | Lost T since last query run (stateful)      |
++-----+-----------------------+---------------------------------------------+
+| 21  | Changed(T)            | T changed since last query run (stateful)   |
++-----+-----------------------+---------------------------------------------+
+|     | EVENTS                                                              |
++-----+-----------------------+---------------------------------------------+
+| 22  | onAdd                 | After trait data is set on entity            |
++-----+-----------------------+---------------------------------------------+
+| 23  | onRemove              | Before trait data is removed from entity     |
++-----+-----------------------+---------------------------------------------+
+| 24  | onChange              | After set() or entity.changed()             |
++-----+-----------------------+---------------------------------------------+
+| 25  | onQueryAdd            | Entity gains all traits in query set        |
++-----+-----------------------+---------------------------------------------+
+| 26  | onQueryRemove         | Entity loses any trait in query set          |
++-----+-----------------------+---------------------------------------------+
+|     | CHANGE DETECTION                                                    |
++-----+-----------------------+---------------------------------------------+
+| 27  | changeDetection       | updateEach option: 'auto' | 'always' |      |
+|     |                       | 'never'. Shallow compares scalars.          |
++-----+-----------------------+---------------------------------------------+
+| 28  | entity.changed()      | Manual change flag for AoS mutations        |
++-----+-----------------------+---------------------------------------------+
+|     | RELATIONS                                                           |
++-----+-----------------------+---------------------------------------------+
+| 29  | relation              | Directed edge between entities              |
++-----+-----------------------+---------------------------------------------+
+| 30  | relation({ store })   | Relation carrying per-pair data             |
++-----+-----------------------+---------------------------------------------+
+| 31  | exclusive             | One target max, new add replaces old        |
++-----+-----------------------+---------------------------------------------+
+| 32  | autoDestroy           | 'orphan'/'source': destroy sources when     |
+|     |                       | target dies. 'target': reverse.             |
++-----+-----------------------+---------------------------------------------+
+| 33  | ordered (experimental)| Maintains ordered list of related entities,  |
+|     |                       | bidirectional sync with push/splice         |
++-----+-----------------------+---------------------------------------------+
+| 34  | targetsFor / targetFor| Get all / first relation targets             |
++-----+-----------------------+---------------------------------------------+
+| 35  | Wildcard / '*'        | Query any target: Contains('*'),            |
+|     |                       | Wildcard(entity)                            |
++-----+-----------------------+---------------------------------------------+
+|     | ACTIONS                                                             |
++-----+-----------------------+---------------------------------------------+
+| 36  | createActions         | Safe world mutation bundle                  |
++-----+-----------------------+---------------------------------------------+
+|     | UTILITIES                                                           |
++-----+-----------------------+---------------------------------------------+
+| 37  | unpackEntity          | Decode entity into entityId, generation,    |
+|     |                       | worldId                                     |
++-----+-----------------------+---------------------------------------------+
+| 38  | getStore              | Low-level direct store access (debugging)   |
++-----+-----------------------+---------------------------------------------+
+| 39  | TraitRecord<T>        | TypeScript type for trait state              |
++-----+-----------------------+---------------------------------------------+
+```
+
 ## Traits
 
 Traits are named slices of data attached to entities. Koota's word for "components" in ECS.
