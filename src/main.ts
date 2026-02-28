@@ -6,6 +6,8 @@ import { Vector3, Color3 } from '@babylonjs/core/Maths/math'
 
 import '@babylonjs/core/Helpers/sceneHelpers'
 import '@babylonjs/loaders/glTF'
+import '@babylonjs/core/Materials/Node/Blocks'
+
 
 import { type Theme, type System } from './world'
 import { setupStage, beatDecaySystem, beatRenderSystem } from './stage'
