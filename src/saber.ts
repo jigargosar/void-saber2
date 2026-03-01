@@ -1,8 +1,9 @@
 import { type Scene } from '@babylonjs/core/scene'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
+import { type Mesh } from '@babylonjs/core/Meshes/mesh'
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
-import { Color3 } from '@babylonjs/core/Maths/math'
+import { Color3, Vector3 } from '@babylonjs/core/Maths/math'
 import { type Hand, type Teardown, type System, type Theme, handColor } from './types'
 import { type Trail, createTrail } from './trail'
 
@@ -11,10 +12,13 @@ const HANDLE_DIAMETER = 0.035
 const BLADE_HEIGHT = 0.8
 const BLADE_DIAMETER = 0.03
 
+// Local-space blade endpoints for trail sampling (no marker nodes needed)
+const BLADE_TIP_LOCAL = new Vector3(0, BLADE_HEIGHT / 2, 0)
+const BLADE_BASE_LOCAL = new Vector3(0, -BLADE_HEIGHT / 2, 0)
+
 interface SaberParts {
     readonly root: TransformNode
-    readonly bladeBase: TransformNode
-    readonly bladeTip: TransformNode
+    readonly blade: Mesh
 }
 
 interface SaberEntry {
@@ -58,26 +62,22 @@ function buildSaber(scene: Scene, name: string, color: Color3): SaberParts {
     blade.position.y = HANDLE_HEIGHT / 2 + BLADE_HEIGHT / 2
     blade.parent = root
 
-    // Marker nodes for trail sampling — parented to blade mesh
-    const bladeBase = new TransformNode(`${name}BladeBase`, scene)
-    bladeBase.position.y = -BLADE_HEIGHT / 2
-    bladeBase.parent = blade
-
-    const bladeTip = new TransformNode(`${name}BladeTip`, scene)
-    bladeTip.position.y = BLADE_HEIGHT / 2
-    bladeTip.parent = blade
-
-    return { root, bladeBase, bladeTip }
+    return { root, blade }
 }
 
 export function createSabers(scene: Scene, theme: Theme): Sabers {
     const sabers = new Map<Hand, SaberEntry>()
 
+    // Pre-allocated scratch vectors for world-space blade endpoints
+    const tipWorld = new Vector3()
+    const baseWorld = new Vector3()
+
     return {
         attach(hand, grip) {
-            const parts = buildSaber(scene, `${hand}Saber`, handColor(theme, hand))
+            const color = handColor(theme, hand)
+            const parts = buildSaber(scene, `${hand}Saber`, color)
             parts.root.parent = grip
-            const trail = createTrail(scene, `${hand}Saber`, handColor(theme, hand))
+            const trail = createTrail(scene, `${hand}Trail`, color)
             sabers.set(hand, { parts, trail })
         },
 
@@ -89,21 +89,20 @@ export function createSabers(scene: Scene, theme: Theme): Sabers {
             sabers.delete(hand)
         },
 
-        trailUpdateSystem: () => {
-            for (const entry of sabers.values()) {
-                // Force world matrix recomputation to reflect XR transforms
-                entry.parts.bladeTip.computeWorldMatrix(true)
-                entry.parts.bladeBase.computeWorldMatrix(true)
-                const tip = entry.parts.bladeTip.getAbsolutePosition()
-                const base = entry.parts.bladeBase.getAbsolutePosition()
-                entry.trail.sample(tip, base)
+        trailUpdateSystem: (dt) => {
+            for (const { parts, trail } of sabers.values()) {
+                parts.blade.computeWorldMatrix(true)
+                const worldMatrix = parts.blade.getWorldMatrix()
+                Vector3.TransformCoordinatesToRef(BLADE_TIP_LOCAL, worldMatrix, tipWorld)
+                Vector3.TransformCoordinatesToRef(BLADE_BASE_LOCAL, worldMatrix, baseWorld)
+                trail.sample(tipWorld, baseWorld, dt)
             }
         },
 
         dispose() {
-            for (const entry of sabers.values()) {
-                entry.trail.dispose()
-                entry.parts.root.dispose(false, true)
+            for (const { parts, trail } of sabers.values()) {
+                trail.dispose()
+                parts.root.dispose(false, true)
             }
             sabers.clear()
         },
