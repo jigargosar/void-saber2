@@ -37,18 +37,18 @@ Extracted from patterns proven in `void-saber/src/ecs.ts`.
 
 ### 3. Refactor `src/stage.ts`
 
-Remove all Koota imports. Adopt the `createEnvironment()` closure pattern from `void-saber/src/game/environment.ts`:
+Remove all Koota imports. Adopt the `createStage()` closure pattern from `void-saber/src/game/environment.ts`:
 - `BeatPulse` trait → `let beatFlash = 0` closure variable
 - `BeatVisuals` trait → closure captures `pillarTargets`, `fogBaseDensity` directly
 - `world.spawn()` → gone
 - `world.onQueryRemove()` → `dispose()` method on handle
-- Export `Environment` interface: `{ onBeat(), createBeatDecaySystem(), dispose() }`
+- Export `Stage` interface: `{ onBeat(), beatDecaySystem, dispose() }`
 
 ### 4. Update `src/main.ts`
 
 - Import from `types.ts` and `pipeline.ts` instead of `world.ts`
-- Call `createEnvironment(scene, theme)`, capture handle
-- Build system array from handle's `createBeatDecaySystem()`
+- Call `createStage(scene, theme)`, capture handle
+- Build system array from handle's `beatDecaySystem`
 - Remove `System` import from world.ts
 
 ### 5. Delete `src/world.ts`

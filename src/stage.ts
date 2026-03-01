@@ -139,15 +139,15 @@ function setupPillars(theme: Theme): PillarPulseTarget[] {
     return targets
 }
 
-// ── Environment module ───────────────────────────────────────
+// ── Stage module ────────────────────────────────────────────
 
-export interface Environment {
+export interface Stage {
     onBeat(): void
-    createBeatDecaySystem(): System
+    readonly beatDecaySystem: System
     dispose(): void
 }
 
-export function createEnvironment(scene: Scene, theme: Theme): Environment {
+export function createStage(scene: Scene, theme: Theme): Stage {
     setupAtmosphere(scene)
     const glow = setupLighting(scene)
     setupTrack()
@@ -161,15 +161,13 @@ export function createEnvironment(scene: Scene, theme: Theme): Environment {
             beatFlash = 1
         },
 
-        createBeatDecaySystem(): System {
-            return (dt: Seconds) => {
-                if (beatFlash <= 0) return
-                beatFlash = Math.max(0, beatFlash - dt / 0.12)
+        beatDecaySystem: (dt: Seconds) => {
+            if (beatFlash <= 0) return
+            beatFlash = Math.max(0, beatFlash - dt / 0.12)
 
-                scene.fogDensity = FOG_DENSITY_BASE * (1 + 0.8 * beatFlash)
-                for (const { mat, baseColor } of pillarTargets) {
-                    mat.emissiveColor = baseColor.scale(1 + 1.5 * beatFlash)
-                }
+            scene.fogDensity = FOG_DENSITY_BASE * (1 + 0.8 * beatFlash)
+            for (const { mat, baseColor } of pillarTargets) {
+                mat.emissiveColor = baseColor.scale(1 + 1.5 * beatFlash)
             }
         },
 

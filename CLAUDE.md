@@ -42,7 +42,7 @@ Each module follows the same shape:
 2. Handle exposes: `createXxxSystem(): System` (per-frame), domain methods, `dispose()`
 3. Internal state lives in closure variables, not exported
 
-Example (stage.ts): `createEnvironment(scene, theme)` → `Environment` handle with `onBeat()`, `createBeatDecaySystem()`, `dispose()`.
+Example (stage.ts): `createStage(scene, theme)` → `Stage` handle with `onBeat()`, `beatDecaySystem`, `dispose()`.
 
 ## Infrastructure (`pipeline.ts`, `types.ts`)
 

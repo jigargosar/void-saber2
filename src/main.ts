@@ -10,7 +10,7 @@ import '@babylonjs/core/Materials/Node/Blocks'
 
 
 import { type Theme, type System } from './types'
-import { createEnvironment } from './stage'
+import { createStage } from './stage'
 
 const EYE_HEIGHT = 1.6
 
@@ -66,12 +66,12 @@ function createScene() {
 async function main(): Promise<void> {
     const { engine, scene } = createScene()
 
-    const environment = createEnvironment(scene, theme)
+    const stage = createStage(scene, theme)
     setupCamera(scene)
     setupWebXR(scene).catch(console.error)
 
     startGameLoop(scene, [
-        environment.createBeatDecaySystem(),
+        stage.beatDecaySystem,
     ])
 
     engine.runRenderLoop(() => scene.render())
