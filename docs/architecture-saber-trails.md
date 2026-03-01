@@ -1,3 +1,5 @@
+DEPRECATED
+
 Step 5 — Saber Trails
 
 Ribbon mesh showing the swept area of the blade. Two edges: blade tip path and blade base path. Fades from opaque (newest) to transparent (oldest).
