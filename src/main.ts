@@ -37,7 +37,7 @@ async function setupXR(scene: Scene, sabers: Sabers): Promise<void> {
         disableNearInteraction: false,
         disableHandTracking: false,
         inputOptions: {
-            doNotLoadControllerMeshes: false,
+            doNotLoadControllerMeshes: true,
             disableControllerAnimation: false,
             disableOnlineControllerRepository: false,
             controllerOptions: {},
