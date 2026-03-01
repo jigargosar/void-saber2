@@ -1,18 +1,26 @@
+import { type Scene } from '@babylonjs/core/scene'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { Color3 } from '@babylonjs/core/Maths/math'
+import { type Hand, type Teardown, type Theme, handColor } from './types'
 
 const HANDLE_HEIGHT = 0.25
 const HANDLE_DIAMETER = 0.035
 const BLADE_HEIGHT = 0.8
 const BLADE_DIAMETER = 0.03
 
-export function buildSaber(name: string, color: Color3): TransformNode {
-    const root = new TransformNode(`${name}Root`)
+export interface Sabers {
+    attach(hand: Hand, grip: TransformNode): void
+    detach(hand: Hand): void
+    dispose: Teardown
+}
+
+function buildSaber(scene: Scene, name: string, color: Color3): TransformNode {
+    const root = new TransformNode(`${name}Root`, scene)
     root.rotation.x = Math.PI / 2
 
-    const handleMat = new StandardMaterial(`${name}HandleMat`)
+    const handleMat = new StandardMaterial(`${name}HandleMat`, scene)
     handleMat.diffuseColor = new Color3(0.15, 0.15, 0.18)
     handleMat.specularColor = new Color3(0.3, 0.3, 0.3)
 
@@ -20,11 +28,11 @@ export function buildSaber(name: string, color: Color3): TransformNode {
         height: HANDLE_HEIGHT,
         diameter: HANDLE_DIAMETER,
         tessellation: 12,
-    })
+    }, scene)
     handle.material = handleMat
     handle.parent = root
 
-    const bladeMat = new StandardMaterial(`${name}BladeMat`)
+    const bladeMat = new StandardMaterial(`${name}BladeMat`, scene)
     bladeMat.emissiveColor = color
     bladeMat.disableLighting = true
 
@@ -32,10 +40,36 @@ export function buildSaber(name: string, color: Color3): TransformNode {
         height: BLADE_HEIGHT,
         diameter: BLADE_DIAMETER,
         tessellation: 8,
-    })
+    }, scene)
     blade.material = bladeMat
     blade.position.y = HANDLE_HEIGHT / 2 + BLADE_HEIGHT / 2
     blade.parent = root
 
     return root
+}
+
+export function createSabers(scene: Scene, theme: Theme): Sabers {
+    const sabers = new Map<Hand, TransformNode>()
+
+    return {
+        attach(hand, grip) {
+            const saber = buildSaber(scene, `${hand}Saber`, handColor(theme, hand))
+            saber.parent = grip
+            sabers.set(hand, saber)
+        },
+
+        detach(hand) {
+            const saber = sabers.get(hand)
+            if (!saber) return
+            saber.dispose(false, true)
+            sabers.delete(hand)
+        },
+
+        dispose() {
+            for (const saber of sabers.values()) {
+                saber.dispose(false, true)
+            }
+            sabers.clear()
+        },
+    }
 }

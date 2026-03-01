@@ -9,9 +9,9 @@ import '@babylonjs/loaders/glTF'
 import '@babylonjs/core/Materials/Node/Blocks'
 
 
-import { type Theme, type System } from './types'
+import { type Theme, type System, isHand } from './types'
 import { createStage } from './stage'
-import { createControllers } from './controllers'
+import { type Sabers, createSabers } from './saber'
 
 const EYE_HEIGHT = 1.6
 
@@ -26,7 +26,10 @@ function setupCamera(scene: Scene) {
     camera.attachControl()
 }
 
-async function setupWebXR(scene: Scene): Promise<WebXRDefaultExperience> {
+// XR observable wiring is composition root work, not a separate module.
+// If future steps need controller lookup by hand (haptics, menu buttons),
+// extract a controllers module then.
+async function setupXR(scene: Scene, sabers: Sabers): Promise<void> {
     const xr = await WebXRDefaultExperience.CreateAsync(scene, {
         uiOptions: { sessionMode: 'immersive-vr' },
         disableTeleportation: true,
@@ -39,8 +42,20 @@ async function setupWebXR(scene: Scene): Promise<WebXRDefaultExperience> {
             disableOnlineControllerRepository: false,
             controllerOptions: {},
         },
+    }).catch((err) => { console.error(err); return undefined })
+    if (!xr) return
+
+    xr.input.onControllerAddedObservable.add((source) => {
+        const hand = source.inputSource.handedness
+        if (!isHand(hand) || !source.grip) return
+        sabers.attach(hand, source.grip)
     })
-    return xr
+
+    xr.input.onControllerRemovedObservable.add((source) => {
+        const hand = source.inputSource.handedness
+        if (!isHand(hand)) return
+        sabers.detach(hand)
+    })
 }
 
 function startGameLoop(scene: Scene, systems: System[]): void {
@@ -68,8 +83,9 @@ async function main(): Promise<void> {
     const { engine, scene } = createScene()
 
     const stage = createStage(scene, theme)
+    const sabers = createSabers(scene, theme)
     setupCamera(scene)
-    setupWebXR(scene).catch(console.error)
+    setupXR(scene, sabers).catch(console.error)
 
     startGameLoop(scene, [
         stage.beatDecaySystem,

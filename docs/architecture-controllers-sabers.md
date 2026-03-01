@@ -51,24 +51,37 @@ No polling needed, no `gripBound` flag.
 
 ## Wiring (in `main.ts`)
 
+XR setup + controller wiring lives in a `setupXR` factory function inside
+main.ts. Its parameter list documents the coupling. As consumers are added,
+the signature grows: `setupXR(scene, sabers, trails, haptics)`.
+
+XR failure is graceful — app continues without VR (desktop corridor preview).
+
 ```ts
 // XR observable wiring is composition root work, not a separate module.
 // If future steps need controller lookup by hand (haptics, menu buttons),
 // extract a controllers module then.
-const xr = await setupWebXR(scene)
+async function setupXR(scene: Scene, sabers: Sabers): Promise<void> {
+    const xr = await WebXRDefaultExperience.CreateAsync(scene, { ... })
+        .catch((err) => { console.error(err); return undefined })
+    if (!xr) return
+
+    xr.input.onControllerAddedObservable.add((source) => {
+        const hand = source.inputSource.handedness
+        if (!isHand(hand) || !source.grip) return
+        sabers.attach(hand, source.grip)
+    })
+
+    xr.input.onControllerRemovedObservable.add((source) => {
+        const hand = source.inputSource.handedness
+        if (!isHand(hand)) return
+        sabers.detach(hand)
+    })
+}
+
+// in main():
 const sabers = createSabers(scene, theme)
-
-xr.input.onControllerAddedObservable.add((source) => {
-    const hand = source.inputSource.handedness
-    if (!isHand(hand) || !source.grip) return
-    sabers.attach(hand, source.grip)
-})
-
-xr.input.onControllerRemovedObservable.add((source) => {
-    const hand = source.inputSource.handedness
-    if (!isHand(hand)) return
-    sabers.detach(hand)
-})
+setupXR(scene, sabers).catch(console.error)
 ```
 
 Main.ts extracts `source.grip` (TransformNode) and passes it to sabers.

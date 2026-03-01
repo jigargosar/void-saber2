@@ -35,35 +35,48 @@ Systems are direct properties (e.g. `stage.beatDecaySystem`), not factories (`cr
 
 ## XR Wiring Pattern
 
-Domain modules know nothing about WebXR. The composition root connects XR events to domain modules by extracting the Babylon.js types each module needs.
+Domain modules know nothing about WebXR. A `setupXR` factory function in main.ts connects XR events to domain modules by extracting the Babylon.js types each module needs. Its parameter list documents the coupling.
+
+XR failure is graceful — app continues without VR (desktop corridor preview).
 
 ```ts
-// main.ts — composition root
-const sabers = createSabers(scene, theme)
-const controllers = createControllers(
-    xr.input,
-    (hand, input) => {
-        if (!input.grip) return
-        sabers.attach(hand, input.grip)     // pass TransformNode, not XR type
-    },
-    (hand) => sabers.detach(hand),
-)
+// main.ts — setupXR factory function
+async function setupXR(scene: Scene, sabers: Sabers): Promise<void> {
+    const xr = await WebXRDefaultExperience.CreateAsync(scene, { ... })
+        .catch((err) => { console.error(err); return undefined })
+    if (!xr) return
+
+    xr.input.onControllerAddedObservable.add((source) => {
+        const hand = source.inputSource.handedness
+        if (!isHand(hand) || !source.grip) return
+        sabers.attach(hand, source.grip)     // pass TransformNode, not XR type
+    })
+
+    xr.input.onControllerRemovedObservable.add((source) => {
+        const hand = source.inputSource.handedness
+        if (!isHand(hand)) return
+        sabers.detach(hand)
+    })
+}
 ```
 
 The pattern:
 1. A domain module that knows nothing about XR (sabers, trails, menu, haptics)
-2. Main.ts hooks the relevant XR observable to the domain module's API
-3. Main.ts extracts the Babylon type the module needs (grip node, motion controller, mesh)
+2. `setupXR` hooks the relevant XR observable to the domain module's API
+3. `setupXR` extracts the Babylon type the module needs (grip node, motion controller, mesh)
 4. The domain module receives only what it needs — no XR imports
 
-This scales linearly. Each new XR capability adds wiring in main.ts. No module gains new dependencies. No architecture changes:
+This scales linearly. Each new XR consumer adds a parameter to `setupXR` and a line to the connect/disconnect handlers. No module gains new dependencies. No architecture changes:
 
 ```ts
-// Step 5: trails hook into the same connect handler
-(hand, input) => {
-    if (!input.grip) return
-    sabers.attach(hand, input.grip)
-    trails.attach(hand, sabers.get(hand))
+// Step 5: trails added as parameter, one line in connect handler
+async function setupXR(scene: Scene, sabers: Sabers, trails: Trails): Promise<void> {
+    // ...
+    xr.input.onControllerAddedObservable.add((source) => {
+        // ...
+        sabers.attach(hand, source.grip)
+        trails.attach(hand, sabers.get(hand))
+    })
 }
 
 // Step 19: menu needs motion controller for button input
