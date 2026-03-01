@@ -56,6 +56,7 @@ See `docs/architecture-drop-ecs.md` for XR wiring pattern and full module map.
 
 - **Theme**: `Hand` type alias, `Theme` interface (leftHand/rightHand colors), `handColor()` lookup — defined in `types.ts`.
 - **Babylon.js imports**: Use deep imports (`@babylonjs/core/Meshes/meshBuilder`) not barrel imports.
+- **Babylon.js scene**: Always pass `scene` explicitly to constructors (`new StandardMaterial(name, scene)`, `MeshBuilder.Create*(name, opts, scene)`). Never rely on Babylon's implicit "last created scene" fallback.
 
 ## Key Dependencies
 

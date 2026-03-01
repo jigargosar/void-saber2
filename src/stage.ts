@@ -31,7 +31,7 @@ function setupAtmosphere(scene: Scene): void {
 }
 
 function setupLighting(scene: Scene): GlowLayer {
-    const hemi = new HemisphericLight('hemi', new Vector3(0, 1, 0))
+    const hemi = new HemisphericLight('hemi', new Vector3(0, 1, 0), scene)
     hemi.intensity = 0.08
 
     const glow = new GlowLayer('glow', scene, { mainTextureSamples: 4, blurKernelSize: 64 })
@@ -48,39 +48,39 @@ function setupLighting(scene: Scene): GlowLayer {
     return glow
 }
 
-function setupTrack(): void {
-    const trackMat = new StandardMaterial('trackMat')
+function setupTrack(scene: Scene): void {
+    const trackMat = new StandardMaterial('trackMat', scene)
     trackMat.diffuseColor = new Color3(0.02, 0.02, 0.03)
     trackMat.specularColor = Color3.Black()
 
-    const track = MeshBuilder.CreateGround('track', { width: 4, height: TRACK_HALF_LENGTH * 2 })
+    const track = MeshBuilder.CreateGround('track', { width: 4, height: TRACK_HALF_LENGTH * 2 }, scene)
     track.material = trackMat
 
-    const edgeMatL = new StandardMaterial('edgeLeft')
+    const edgeMatL = new StandardMaterial('edgeLeft', scene)
     edgeMatL.emissiveColor = Color3.White()
     edgeMatL.disableLighting = true
 
-    const edgeMatR = new StandardMaterial('edgeRight')
+    const edgeMatR = new StandardMaterial('edgeRight', scene)
     edgeMatR.emissiveColor = Color3.White()
     edgeMatR.disableLighting = true
 
-    const edgeL = MeshBuilder.CreateBox('edgeL', { width: 0.03, height: 0.02, depth: TRACK_HALF_LENGTH * 2 })
+    const edgeL = MeshBuilder.CreateBox('edgeL', { width: 0.03, height: 0.02, depth: TRACK_HALF_LENGTH * 2 }, scene)
     edgeL.position.set(-2, 0.01, 0)
     edgeL.material = edgeMatL
 
-    const edgeR = MeshBuilder.CreateBox('edgeR', { width: 0.03, height: 0.02, depth: TRACK_HALF_LENGTH * 2 })
+    const edgeR = MeshBuilder.CreateBox('edgeR', { width: 0.03, height: 0.02, depth: TRACK_HALF_LENGTH * 2 }, scene)
     edgeR.position.set(2, 0.01, 0)
     edgeR.material = edgeMatR
 }
 
-function setupRibs(theme: Theme): void {
+function setupRibs(scene: Scene, theme: Theme): void {
     const ribStart = Math.floor(RIB_COUNT / 2) * RIB_GAP
 
-    const ribMatL = new StandardMaterial('ribLeft')
+    const ribMatL = new StandardMaterial('ribLeft', scene)
     ribMatL.emissiveColor = theme.leftHand.scale(0.4)
     ribMatL.disableLighting = true
 
-    const ribMatR = new StandardMaterial('ribRight')
+    const ribMatR = new StandardMaterial('ribRight', scene)
     ribMatR.emissiveColor = theme.rightHand.scale(0.4)
     ribMatR.disableLighting = true
 
@@ -89,43 +89,43 @@ function setupRibs(theme: Theme): void {
         const mat = i % 2 === 0 ? ribMatL : ribMatR
         const rib = MeshBuilder.CreateCylinder(`rib${i}`, {
             height: 4, diameter: 0.03, tessellation: 8,
-        })
+        }, scene)
         rib.rotation.z = Math.PI / 2
         rib.position.set(0, -0.04, z)
         rib.material = mat
     }
 }
 
-function setupPillars(theme: Theme): PillarPulseTarget[] {
+function setupPillars(scene: Scene, theme: Theme): PillarPulseTarget[] {
     const targets: PillarPulseTarget[] = []
     const pillarStart = Math.floor(PILLAR_COUNT / 2) * PILLAR_GAP
 
     for (let i = 0; i < PILLAR_COUNT; i++) {
         const z = pillarStart - i * PILLAR_GAP
 
-        const matLeft = new StandardMaterial(`pillarMatL${i}`)
+        const matLeft = new StandardMaterial(`pillarMatL${i}`, scene)
         matLeft.emissiveColor = new Color3(0.4, 0, 0.6)
         matLeft.disableLighting = true
-        const pillarLeft = MeshBuilder.CreateCylinder(`pillarL${i}`, { height: 8, diameter: 0.12, tessellation: 12 })
+        const pillarLeft = MeshBuilder.CreateCylinder(`pillarL${i}`, { height: 8, diameter: 0.12, tessellation: 12 }, scene)
         pillarLeft.position.set(PILLAR_X, 2, z)
         pillarLeft.material = matLeft
         targets.push({ mat: matLeft, baseColor: matLeft.emissiveColor.clone() })
 
-        const matRight = new StandardMaterial(`pillarMatR${i}`)
+        const matRight = new StandardMaterial(`pillarMatR${i}`, scene)
         matRight.emissiveColor = new Color3(0.4, 0, 0.6)
         matRight.disableLighting = true
-        const pillarRight = MeshBuilder.CreateCylinder(`pillarR${i}`, { height: 8, diameter: 0.12, tessellation: 12 })
+        const pillarRight = MeshBuilder.CreateCylinder(`pillarR${i}`, { height: 8, diameter: 0.12, tessellation: 12 }, scene)
         pillarRight.position.set(-PILLAR_X, 2, z)
         pillarRight.material = matRight
         targets.push({ mat: matRight, baseColor: matRight.emissiveColor.clone() })
 
         if (i < 2) {
-            const lightLeft = new PointLight(`pointL${i}`, new Vector3(-PILLAR_X, 0.5, z))
+            const lightLeft = new PointLight(`pointL${i}`, new Vector3(-PILLAR_X, 0.5, z), scene)
             lightLeft.diffuse = theme.leftHand
             lightLeft.intensity = 0.5
             lightLeft.range = 4
 
-            const lightRight = new PointLight(`pointR${i}`, new Vector3(PILLAR_X, 0.5, z))
+            const lightRight = new PointLight(`pointR${i}`, new Vector3(PILLAR_X, 0.5, z), scene)
             lightRight.diffuse = theme.rightHand
             lightRight.intensity = 0.5
             lightRight.range = 4
@@ -146,9 +146,9 @@ export interface Stage {
 export function createStage(scene: Scene, theme: Theme): Stage {
     setupAtmosphere(scene)
     const glow = setupLighting(scene)
-    setupTrack()
-    setupRibs(theme)
-    const pillarTargets = setupPillars(theme)
+    setupTrack(scene)
+    setupRibs(scene, theme)
+    const pillarTargets = setupPillars(scene, theme)
 
     let beatFlash = 0
 
