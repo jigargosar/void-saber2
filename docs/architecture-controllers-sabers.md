@@ -2,17 +2,38 @@ Controllers + Sabers — Build Steps 3-4
 
 ## Step 3: `src/controllers.ts`
 
-`createControllers(xrInput)` → `Controllers` handle.
+`createControllers(xrInput, theme)` → `Controllers` handle.
 
 Listens to `onControllerAddedObservable` / `onControllerRemovedObservable`.
-Stores controllers in `Map<Hand, WebXRInputSource>`.
-Filters out `handedness === 'none'`.
+Stores state in `Map<Hand, ControllerEntry>`.
+Filters out `handedness === 'none'` via `isHand()` guard.
 
-Handle exposes:
-- `get(hand): WebXRInputSource | undefined`
-- `onConnect(cb: (hand, input) => void)` — fires for each new controller
-- `onDisconnect(cb: (hand, input) => void)` — fires before removal
-- `dispose()` — unsubscribes observables, clears map
+On connect:
+- `buildSaber(name, color)` → parent `saber.root` to `source.grip`
+- Store `{ input, saber }` in map
+
+On disconnect:
+- `saber.root.dispose(false, true)` — meshes + materials
+- Remove from map
+
+Grip is available at connect time — Babylon.js creates the grip mesh
+synchronously in the `WebXRInputSource` constructor (confirmed:
+`webXRInputSource.js:45-46`), before `onControllerAddedObservable` fires.
+No polling needed, no `gripBound` flag.
+
+```ts
+interface ControllerEntry {
+    readonly input: WebXRInputSource
+    readonly saber: SaberVisual
+}
+
+interface Controllers {
+    get(hand: Hand): ControllerEntry | undefined
+    dispose: Teardown
+}
+```
+
+No per-frame system. Purely event-driven.
 
 ## Step 4: `src/saber.ts`
 
@@ -27,7 +48,7 @@ Creates under a `TransformNode` root:
 
 Root is rotated `PI/2` on X so blade points forward along grip.
 
-Interfaces:
+Types live in `saber.ts` (move to shared only when multiple unrelated modules need them):
 ```ts
 interface BladeSegment {
     readonly base: TransformNode
@@ -40,33 +61,28 @@ interface SaberVisual {
 }
 ```
 
-## Wiring: `src/grip-bind.ts` (separate module)
+## Wiring (in `main.ts`)
 
-`createGripBind(controllers, theme)` → `GripBind` handle.
+```ts
+const xr = await setupWebXR(scene)
+const controllers = createControllers(xr.input, theme)
+```
 
-On controller connect: `buildSaber()`, parent to controller grip, store in `Map<Hand, SaberVisual>`.
-On controller disconnect: dispose saber, remove from map.
-
-Handle exposes:
-- `createGripBindSystem(): System` — polls for grip state each frame (if needed)
-- `getSaber(hand): SaberVisual | undefined`
-- `dispose()`
-
-## Build order
-
-Sabers are built lazily on controller connect — no invisible geometry, cleaner lifecycle.
-
-## Open questions
-
-- Does grip-bind need a per-frame system, or is it purely event-driven (connect/disconnect)?
-- Trail attachment point: `BladeTip` — confirmed by reference project.
+No grip-bind module. Controller lifecycle and saber creation/disposal
+are one concern, handled in one place.
 
 ## Files
 
 ```
 CREATE  src/controllers.ts
 CREATE  src/saber.ts
-CREATE  src/grip-bind.ts
 EDIT    src/main.ts
-EDIT    src/types.ts (BladeSegment, SaberVisual)
+EDIT    src/types.ts (isHand guard)
 ```
+
+## Decisions
+
+- Grip binding is event-driven, not polled. `source.grip` exists at connect time.
+- No separate `grip-bind.ts` — saber lifecycle is part of controller lifecycle.
+- `BladeSegment`, `SaberVisual` types live in `saber.ts`, not `types.ts`.
+- Trail attachment point: `BladeTip` — confirmed by reference project (step 5 concern).
