@@ -46,15 +46,9 @@ Example (stage.ts): `createStage(scene, theme)` → `Stage` handle with `onBeat(
 
 See `docs/architecture-drop-ecs.md` for XR wiring pattern and full module map.
 
-## Infrastructure (`types.ts`)
-
-- `System = (dt: Seconds) => void` — per-frame function
-- `Seconds`, `Hand`, `Teardown` — domain type aliases
-- `Theme`, `handColor()` — color theme shared across modules
-
 ## Conventions
 
-- **Theme**: `Hand` type alias, `Theme` interface (leftHand/rightHand colors), `handColor()` lookup — defined in `types.ts`.
+- Domain type aliases and theme: see `src/types.ts`
 - **Babylon.js imports**: Use deep imports (`@babylonjs/core/Meshes/meshBuilder`) not barrel imports.
 - **Babylon.js scene**: Always pass `scene` explicitly to constructors (`new StandardMaterial(name, scene)`, `MeshBuilder.Create*(name, opts, scene)`). Never rely on Babylon's implicit "last created scene" fallback.
 
