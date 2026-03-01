@@ -93,10 +93,10 @@ types.ts         — domain type aliases, Theme, handColor()
 stage.ts         — corridor geometry, beat pulse, fog/pillar systems
 ```
 
-Steps 3-4 (controllers + sabers):
+Steps 3-4 (sabers):
 ```
-controllers.ts   — createControllers(xrInput, onConnect, onDisconnect)
-saber.ts         — buildSaber() factory, BladeSegment/SaberVisual types
+saber.ts         — createSabers() module, attach/detach, owns lifecycle
+                    (no controllers.ts — XR wiring lives in main.ts)
 ```
 
 Steps 5-6 (trails + collision):
