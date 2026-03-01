@@ -56,6 +56,7 @@ function setupTrack(scene: Scene): void {
     const track = MeshBuilder.CreateGround('track', { width: 4, height: TRACK_HALF_LENGTH * 2 }, scene)
     track.material = trackMat
 
+    // Separate materials per edge — identical now, kept separate for future color experiments
     const edgeMatL = new StandardMaterial('edgeLeft', scene)
     edgeMatL.emissiveColor = Color3.White()
     edgeMatL.disableLighting = true
@@ -167,6 +168,7 @@ export function createStage(scene: Scene, theme: Theme): Stage {
             }
         },
 
+        // TODO: only glow — meshes/materials/lights not tracked. See Board backlog.
         dispose() {
             glow.dispose()
         },
