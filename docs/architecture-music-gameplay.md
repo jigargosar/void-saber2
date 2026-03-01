@@ -27,8 +27,8 @@ type SwingDirection = 'up' | 'down' | 'left' | 'right'
                     | 'upleft' | 'upright' | 'downleft' | 'downright'
                     | 'any'
 
-// Game state
-type GamePhase = 'menu' | 'countdown' | 'playing' | 'paused' | 'results'
+// Game state — menu → playing ⇄ paused → results → menu
+type GamePhase = 'menu' | 'playing' | 'paused' | 'results'
 ```
 
 Cross-module data types (exported from their owning modules):
@@ -300,7 +300,7 @@ Mock data where real integration isn't ready. Real integration where possible.
 ### C1. game-state.ts
 
 ```ts
-type GamePhase = 'menu' | 'countdown' | 'playing' | 'paused' | 'results'
+type GamePhase = 'menu' | 'playing' | 'paused' | 'results'
 
 interface GameState {
     readonly phase: GamePhase
@@ -313,10 +313,10 @@ interface GameStateManager {
     readonly state: GameState
     selectSong(seed: Seed): void
     setDifficulty(difficulty: Difficulty): void
-    startCountdown(): void
     startPlaying(): void
     pause(): void
     resume(): void
+    restart(): void
     showResults(score: Score): void
     returnToMenu(): void
     onPhaseChange(callback: (phase: GamePhase) => void): Teardown
@@ -326,7 +326,8 @@ interface GameStateManager {
 function createGameStateManager(): GameStateManager
 ```
 
-Validates transitions: menu→countdown→playing⇄paused→results→menu.
+Validates transitions: menu→playing⇄paused→results→menu.
+No countdown phase — song intro sections serve as natural lead-in.
 Invalid transitions throw (fail fast).
 
 ### C2. menu.ts — VR Menu Panel
@@ -353,19 +354,23 @@ Full visual menu:
 Babylon.js GUI (AdvancedDynamicTexture on a plane in 3D space).
 Positioned in front of player at menu phase.
 
-### C3. countdown.ts
+### C3. pause-menu.ts — In-Game Pause Overlay
 
 ```ts
-interface Countdown {
-    start(onComplete: () => void): void
-    cancel(): void
+interface PauseMenu {
+    show(): void
+    hide(): void
+    onContinue(callback: () => void): Teardown
+    onRestart(callback: () => void): Teardown
+    onQuit(callback: () => void): Teardown
     dispose: Teardown
 }
 
-function createCountdown(scene: Scene): Countdown
+function createPauseMenu(scene: Scene): PauseMenu
 ```
 
-3-2-1 floating text in VR space. Calls onComplete when done.
+Overlay during paused phase. Three options: continue, restart song, back to menu.
+Triggered by controller button (menu/B button).
 
 ### C4. results.ts
 
@@ -388,7 +393,7 @@ Score display, accuracy %, streak. Retry and Menu buttons with laser interaction
 1. pnpm typecheck
 2. Menu appears on start, shows song list + difficulty
 3. Laser pointer selects items
-4. Play → countdown → (gameplay would start) → results → menu loop
+4. Play → playing → pause → continue/restart/quit → results → menu loop
 5. State transitions enforce valid paths
 
 ### C: Files
@@ -397,9 +402,9 @@ Score display, accuracy %, streak. Retry and Menu buttons with laser interaction
 EDIT    src/types.ts         (add GamePhase)
 CREATE  src/game-state.ts
 CREATE  src/menu.ts
-CREATE  src/countdown.ts
+CREATE  src/pause-menu.ts
 CREATE  src/results.ts
-EDIT    src/main.ts          (wire state manager, menu, countdown, results)
+EDIT    src/main.ts          (wire state manager, menu, pause-menu, results)
 ```
 
 ---
@@ -416,24 +421,26 @@ function main(): void {
 
     const gameState = createGameStateManager()
     const menu = createMenu(scene)
-    const countdown = createCountdown(scene)
+    const pauseMenu = createPauseMenu(scene)
     const results = createResults(scene)
 
-    // Menu → play: compose + start
+    // Menu → playing: compose + start (song intro = natural lead-in)
     menu.onPlay((seed, difficulty) => {
         const composition = composeMusic(seed)
         const beatTimeline = extractBeatTimeline(composition)
         const player = createMusicPlayer(composition, () => stage.onBeat())
         const choreography = createChoreography(composition, beatTimeline, difficulty)
 
-        gameState.startCountdown()
+        gameState.startPlaying()
         menu.hide()
-        countdown.start(() => {
-            gameState.startPlaying()
-            player.start().catch(console.error)
-            // activate cube spawn system with choreography
-        })
+        player.start().catch(console.error)
+        // activate cube spawn system with choreography
     })
+
+    // Pause menu actions
+    pauseMenu.onContinue(() => { gameState.resume(); pauseMenu.hide() })
+    pauseMenu.onRestart(() => { gameState.restart(); pauseMenu.hide(); /* recompose + replay */ })
+    pauseMenu.onQuit(() => { gameState.returnToMenu(); pauseMenu.hide(); menu.show() })
 
     // Results → menu or retry
     results.onMenu(() => { gameState.returnToMenu(); menu.show() })
