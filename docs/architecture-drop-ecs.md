@@ -69,15 +69,8 @@ The pattern:
 This scales linearly. Each new XR consumer adds a parameter to `setupXR` and a line to the connect/disconnect handlers. No module gains new dependencies. No architecture changes:
 
 ```ts
-// Step 5: trails added as parameter, one line in connect handler
-async function setupXR(scene: Scene, sabers: Sabers, trails: Trails): Promise<void> {
-    // ...
-    xr.input.onControllerAddedObservable.add((source) => {
-        // ...
-        sabers.attach(hand, source.grip)
-        trails.attach(hand, sabers.get(hand))
-    })
-}
+// Step 5: trails are internal to sabers — no new setupXR parameter needed.
+// sabers.attach() creates the trail; trailUpdateSystem updates it per frame.
 
 // Step 19: menu needs motion controller for button input
 source.onMotionControllerInitObservable.addOnce((mc) => {
@@ -101,23 +94,19 @@ type Teardown = () => void
 
 ## Module Map
 
-Current (steps 1-2):
+Current (steps 1-5, 7):
 ```
 main.ts          — composition root: engine, scene, XR, wires modules
 types.ts         — domain type aliases, Theme, handColor()
 stage.ts         — corridor geometry, beat pulse, fog/pillar systems
-```
-
-Steps 3-4 (sabers):
-```
-saber.ts         — createSabers() module, attach/detach, owns lifecycle
+saber.ts         — createSabers() module, attach/detach, trailUpdateSystem
                     (no controllers.ts — XR wiring lives in main.ts)
+trail.ts         — createTrail() factory, velocity-driven opacity, live sample
+audio.ts         — createAudioEngine(), synth triggers, master gain (needs rework)
 ```
 
-Steps 5-6 (trails + collision):
+Future steps 6+ (collision, gameplay, UI):
 ```
-trail.ts         — buildTrail() factory, startTrail(), constants
-trail-update.ts  — per-frame vertex buffer update system
 collision.ts     — segmentDistance() pure math
 saber-collision.ts — blade-blade check, pushes SaberCollisionEvent
 ```
