@@ -1,10 +1,10 @@
-CLAUDE.md
+# CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 Goal: Quickly finish end-to-end prototype.
 
-See docs/BUILD-GUIDE.md for detailed build guidance.
+See docs/BUILD-GUIDE.md for build steps and decisions. See docs/Board.md for current tasks.
 
 # Principles
 
@@ -33,15 +33,29 @@ VR Beat Saber clone: Babylon.js (3D/WebXR), domain modules with closures.
 
 Flat `src/` layout — no subdirectories. Files are added as milestones progress.
 
-## Module Architecture
+## Module Pattern
 
-No ECS. Domain modules own their data via closures. Composition root (main.ts) wires modules together. Each module exposes: setup function → handle, system function (per-frame), teardown. Shared types in `types.ts`, system pipeline infrastructure in `pipeline.ts`.
+No ECS. Domain modules own their data via closures. `main.ts` (composition root) wires modules together.
+
+Each module follows the same shape:
+1. `createXxx(scene, ...)` — setup function, builds geometry/state, returns a handle
+2. Handle exposes: `createXxxSystem(): System` (per-frame), domain methods, `dispose()`
+3. Internal state lives in closure variables, not exported
+
+Example (stage.ts): `createEnvironment(scene, theme)` → `Environment` handle with `onBeat()`, `createBeatDecaySystem()`, `dispose()`.
+
+## Infrastructure (`pipeline.ts`, `types.ts`)
+
+- `System = (dt: Seconds) => void` — per-frame function
+- `createPipeline(systems, queues?)` — ordered execution + queue flush
+- `createEventQueue<T>(handler)` — buffer + flush, for fire-and-forget events
+- `Seconds`, `Hand`, `Teardown` — domain type aliases
+- `Theme`, `handColor()` — color theme shared across modules
 
 ## Conventions
 
-- **`dispose(false, true)`**: Disposes node + materials + textures for full cleanup.
-- **Trail mesh**: 120 vertices (60 samples x 2), mutable Float32Array buffers updated via `updateVerticesData`.
 - **Theme**: `Hand` type alias, `Theme` interface (leftHand/rightHand colors), `handColor()` lookup — defined in `types.ts`.
+- **Babylon.js imports**: Use deep imports (`@babylonjs/core/Meshes/meshBuilder`) not barrel imports.
 
 ## Key Dependencies
 
