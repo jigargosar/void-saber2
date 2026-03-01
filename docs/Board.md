@@ -10,6 +10,7 @@ Board
 
 # Done
 
+- Implement controllers + sabers (steps 3-4)
 - Drop ECS, establish module architecture
 
 # Backlog
