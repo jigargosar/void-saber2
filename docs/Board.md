@@ -6,11 +6,13 @@ Board
 
 # Ready
 
+- Audio engine — synth kick/snare/hat/bass, master gain, keyboard test triggers (step 7) — half-hearted, needs rework
+
 # InProgress
 
 # Done
 
-- Audio engine — synth kick/snare/hat/bass, master gain, keyboard test triggers (step 7)
+- Saber trails — velocity-driven opacity, distance fade, live sample (step 5)
 - Implement controllers + sabers (steps 3-4)
 - Drop ECS, establish module architecture
 
