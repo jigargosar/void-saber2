@@ -71,7 +71,7 @@ All surviving types moved to types.ts. Koota world, traits gone.
 Not implemented now, but this is how the architecture extends:
 
 ```
-controllers.ts   — Map<Hand, ControllerBundle>, bridgeInput(), accessors
+controllers.ts   — bridgeInput(), tracks connected controllers per hand
 saber.ts         — buildSaber() factory
 trail.ts         — buildTrail() factory, startTrail(), constants
 grip-bind.ts     — createGripBindSystem(): poll for grip, parent saber
@@ -82,7 +82,9 @@ cube-pool.ts     — pre-created meshes, acquire/release, advance system
 game-state.ts    — GameState discriminated union, phase gating
 ```
 
-Key data structure replacing ECS entities:
+Step 3 intermediate shape: `Map<Hand, WebXRInputSource>` — stores raw input sources on connect, removes on disconnect. `isHand()` type guard in `types.ts` narrows XR handedness to `Hand`. No per-frame system (Babylon.js updates grip positions automatically).
+
+Step 4+ evolves to `ControllerBundle` — ISI requires atomic creation with all fields present, so the bundle can't exist until sabers/trails do:
 ```ts
 interface ControllerBundle {
   readonly hand: Hand
