@@ -68,7 +68,7 @@ function startGameLoop(scene: Scene, systems: System[]): void {
     })
 }
 
-function createScene() {
+function setupEngine(): { engine: Engine; scene: Scene } {
     const canvas = document.getElementById('canvas')
     if (!(canvas instanceof HTMLCanvasElement)) {
         throw new Error('Canvas element not found')
@@ -76,15 +76,15 @@ function createScene() {
 
     const engine = new Engine(canvas, true)
     const scene = new Scene(engine)
+    setupCamera(scene)
     return { engine, scene }
 }
 
-async function main(): Promise<void> {
-    const { engine, scene } = createScene()
+function main(): void {
+    const { engine, scene } = setupEngine()
 
     const stage = createStage(scene, theme)
     const sabers = createSabers(scene, theme)
-    setupCamera(scene)
     setupXR(scene, sabers).catch(console.error)
 
     startGameLoop(scene, [
@@ -95,4 +95,4 @@ async function main(): Promise<void> {
     window.addEventListener('resize', () => engine.resize())
 }
 
-main().catch(console.error)
+main()
