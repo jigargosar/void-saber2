@@ -34,7 +34,7 @@ async function setupXR(scene: Scene, sabers: Sabers): Promise<void> {
     const xr = await WebXRDefaultExperience.CreateAsync(scene, {
         uiOptions: { sessionMode: 'immersive-vr' },
         disableTeleportation: true,
-        disablePointerSelection: false,
+        disablePointerSelection: true,
         disableNearInteraction: false,
         disableHandTracking: false,
         inputOptions: {
