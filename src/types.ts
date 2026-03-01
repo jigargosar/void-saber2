@@ -20,3 +20,7 @@ export function handColor(theme: Theme, hand: Hand): Color3 {
         case 'right': return theme.rightHand
     }
 }
+
+export function isHand(handedness: string): handedness is Hand {
+    return handedness === 'left' || handedness === 'right'
+}

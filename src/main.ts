@@ -11,6 +11,7 @@ import '@babylonjs/core/Materials/Node/Blocks'
 
 import { type Theme, type System } from './types'
 import { createStage } from './stage'
+import { createControllers } from './controllers'
 
 const EYE_HEIGHT = 1.6
 

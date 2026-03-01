@@ -37,10 +37,6 @@ function setupLighting(scene: Scene): GlowLayer {
     const glow = new GlowLayer('glow', scene, { mainTextureSamples: 4, blurKernelSize: 64 })
     glow.intensity = 1.08
     glow.customEmissiveColorSelector = (mesh, _subMesh, _material, result) => {
-        if (mesh.name.endsWith('Trail') || mesh.name === 'saberSparks') {
-            result.set(0, 0, 0, 0)
-            return
-        }
         if (mesh.material instanceof StandardMaterial) {
             const ec = mesh.material.emissiveColor
             result.set(ec.r, ec.g, ec.b, 1)
