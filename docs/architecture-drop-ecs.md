@@ -82,10 +82,6 @@ type Seconds = number
 type Hand = 'left' | 'right'
 type System = (dt: Seconds) => void
 type Teardown = () => void
-
-// pipeline.ts
-createEventQueue<T>(handler)        // buffer + flush, fire-and-forget events
-createPipeline(systems, queues?)    // ordered execution + queue flush
 ```
 
 ## Module Map

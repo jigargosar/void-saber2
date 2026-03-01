@@ -46,11 +46,9 @@ Example (stage.ts): `createStage(scene, theme)` → `Stage` handle with `onBeat(
 
 See `docs/architecture-drop-ecs.md` for XR wiring pattern and full module map.
 
-## Infrastructure (`pipeline.ts`, `types.ts`)
+## Infrastructure (`types.ts`)
 
 - `System = (dt: Seconds) => void` — per-frame function
-- `createPipeline(systems, queues?)` — ordered execution + queue flush
-- `createEventQueue<T>(handler)` — buffer + flush, for fire-and-forget events
 - `Seconds`, `Hand`, `Teardown` — domain type aliases
 - `Theme`, `handColor()` — color theme shared across modules
 
