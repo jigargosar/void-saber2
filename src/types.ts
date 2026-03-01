@@ -3,6 +3,8 @@ import { type Color3 } from '@babylonjs/core/Maths/math'
 // ── Domain type aliases ──────────────────────────────────────
 
 export type Seconds = number
+export type Velocity = number    // 0–1
+export type NoteName = string    // e.g. 'C2', 'E3'
 export type Hand = 'left' | 'right'
 export type System = (dt: Seconds) => void
 export type Teardown = () => void

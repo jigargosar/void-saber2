@@ -92,6 +92,8 @@ Key discovery: Babylon.js creates the grip mesh synchronously in the `WebXRInput
 ```ts
 // types.ts
 type Seconds = number
+type Velocity = number    // 0–1
+type NoteName = string    // e.g. 'C2', 'E3'
 type Hand = 'left' | 'right'
 type System = (dt: Seconds) => void
 type Teardown = () => void
@@ -122,8 +124,8 @@ saber-collision.ts — blade-blade check, pushes SaberCollisionEvent
 
 Steps 7-16 (gameplay):
 ```
+audio.ts         — createAudioEngine(), synth triggers, master gain
 music-engine.ts  — generateSong(), pure data
-audio-player.ts  — Tone.js playback, onBeat callback
 beat-clock.ts    — timing from AudioContext.currentTime
 beatmap.ts       — BeatNote type, hardcoded JSON per song
 cube-pool.ts     — pre-created meshes, acquire/release, advance system

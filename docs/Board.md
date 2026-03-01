@@ -10,6 +10,7 @@ Board
 
 # Done
 
+- Audio engine — synth kick/snare/hat/bass, master gain, keyboard test triggers (step 7)
 - Implement controllers + sabers (steps 3-4)
 - Drop ECS, establish module architecture
 

@@ -12,6 +12,7 @@ import '@babylonjs/core/Materials/Node/Blocks'
 import { type Theme, type System, isHand } from './types'
 import { createStage } from './stage'
 import { type Sabers, createSabers } from './saber'
+import { createAudioEngine } from './audio'
 
 const EYE_HEIGHT = 1.6
 
@@ -85,7 +86,24 @@ function main(): void {
 
     const stage = createStage(scene, theme)
     const sabers = createSabers(scene, theme)
+    const audio = createAudioEngine()
     setupXR(scene, sabers).catch(console.error)
+
+    // Audio context requires user gesture to start
+    const canvas = engine.getRenderingCanvas()
+    if (canvas) {
+        canvas.addEventListener('click', () => audio.start(), { once: true })
+    }
+
+    // Temporary keyboard triggers for desktop testing (removed in step 8)
+    document.addEventListener('keydown', (e) => {
+        switch (e.key) {
+            case 'k': audio.triggerKick(); break
+            case 'j': audio.triggerSnare(); break
+            case 'h': audio.triggerHat(); break
+            case 'b': audio.triggerBass('C2', 0.3); break
+        }
+    })
 
     startGameLoop(scene, [
         stage.beatDecaySystem,
