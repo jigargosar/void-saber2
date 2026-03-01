@@ -14,8 +14,9 @@ const COLORS_PER_SAMPLE = 8      // 2 vertices × 4 (rgba, rgba)
 const MAX_OPACITY = 0.5           // cap on sample opacity
 const VELOCITY_CAP = 0.08         // distance/frame at which velocity normalizes to 1
 const EMIT_SPACING_MIN = 0.005    // emit threshold at max velocity (frequent)
-const EMIT_SPACING_MAX = 0.03     // emit threshold at zero velocity (rare)
+const EMIT_SPACING_MAX = 0.01     // emit threshold at zero velocity (rare)
 const INCREMENT_SCALE = 0.1       // opacity added per emit at max velocity
+const BASE_OPACITY = 0.08         // minimum opacity for any emitted sample
 const DECAY_SCALE = 3.0           // opacity lost per second at max velocity
 const MIN_DECAY = 0.1             // minimum decay so trail doesn't freeze at zero velocity
 
@@ -100,8 +101,8 @@ export function createTrail(scene: Scene, name: string, color: Color3): Trail {
                 positions.copyWithin(0, FLOATS_PER_SAMPLE)
                 opacities.copyWithin(0, 1)
 
-                // New sample at LIVE-1: opacity = previous + velocity-scaled increment
-                const increment = velocity * INCREMENT_SCALE
+                // New sample at LIVE-1: base visibility + velocity-scaled increment
+                const increment = BASE_OPACITY + velocity * INCREMENT_SCALE
                 prevOpacity = Math.min(MAX_OPACITY, prevOpacity + increment)
                 opacities[LIVE - 1] = prevOpacity
             }
@@ -115,8 +116,8 @@ export function createTrail(scene: Scene, name: string, color: Color3): Trail {
             positions[liveOff + 5] = tipWorld.z
             opacities[LIVE] = 0
 
-            // Decay all samples — velocity drives decay rate
-            const decay = Math.max(MIN_DECAY, velocity * DECAY_SCALE) * dt
+            // Decay all samples — slow movement fades fast, fast movement lingers
+            const decay = Math.max(MIN_DECAY, (1 - velocity) * DECAY_SCALE) * dt
             for (let i = 0; i < LIVE; i++) {
                 opacities[i] = Math.max(0, opacities[i] - decay)
             }
