@@ -38,11 +38,13 @@ Flat `src/` layout — no subdirectories. Files are added as milestones progress
 No ECS. Domain modules own their data via closures. `main.ts` (composition root) wires modules together.
 
 Each module follows the same shape:
-1. `createXxx(scene, ...)` — setup function, builds geometry/state, returns a handle
-2. Handle exposes: `createXxxSystem(): System` (per-frame), domain methods, `dispose()`
+1. `createXxx(deps...)` — setup function, builds geometry/state, returns a handle
+2. Handle exposes: per-frame systems as readonly properties, domain methods, `dispose()`
 3. Internal state lives in closure variables, not exported
 
 Example (stage.ts): `createStage(scene, theme)` → `Stage` handle with `onBeat()`, `beatDecaySystem`, `dispose()`.
+
+See `docs/architecture-drop-ecs.md` for XR wiring pattern and full module map.
 
 ## Infrastructure (`pipeline.ts`, `types.ts`)
 

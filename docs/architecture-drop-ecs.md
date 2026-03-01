@@ -1,120 +1,132 @@
-Drop ECS, Establish Module Architecture
+Architecture — Domain Modules, No ECS
 
-## Context
+## Why No ECS
 
-ECS libraries (Koota, Miniplex) cause more friction than they solve for this project. The entity inventory is 2 controllers, 2 sabers, 2 trails, singletons, and ~100 pooled cubes. The dominant data pattern is external Babylon.js object references, which no JS ECS library handles with clean type narrowing. We're removing Koota and replacing it with domain modules that own their data.
+ECS libraries (Koota, Miniplex) were evaluated and dropped:
+- Koota: trait factories can't type external Babylon.js objects without nullable defaults — the dominant data pattern across all 23 build steps.
+- Miniplex: best TypeScript ECS (optional properties + query narrowing), but development stalled.
+- Entity inventory (2 controllers, 2 sabers, 2 trails, ~100 pooled cubes) doesn't justify ECS. Domain modules with closures suffice.
 
-## Architecture Overview
+See `docs/BUILD-GUIDE.md` decisions section for the full rationale.
 
-Modules own their data (TDA/encapsulation). No central "world" or entity store. The composition root (main.ts) wires modules together. Each module exposes: setup function → handle, system function (per-frame), teardown.
+## Core Principle
 
-Three ECS-independent patterns survive from the original project:
-- **System pipeline**: ordered `(dt: Seconds) => void` functions, called per frame
-- **Event queues**: fire-and-forget buffer, batched dispatch at end of frame
-- **Teardown accumulator**: cleanup pattern for lifecycle management
+Modules own their data. No central "world" or entity store. The composition root (`main.ts`) wires modules together. Coupling between modules is always visible in `main.ts`, never hidden inside modules.
 
-## Immediate Changes (Milestones 1-2 refactor)
+## Module Pattern
 
-### 1. Create `src/types.ts`
+Every domain module follows the same shape:
 
-Domain type aliases and shared interfaces:
 ```ts
+interface Stage {
+    onBeat(): void
+    readonly beatDecaySystem: System   // direct property, not factory
+    dispose(): void
+}
+
+function createStage(scene: Scene, theme: Theme): Stage
+```
+
+1. `createXxx(deps...)` — setup function, builds geometry/state, returns a handle
+2. Handle exposes: per-frame systems as readonly properties, domain methods, `dispose()`
+3. Internal state lives in closure variables, not exported
+
+Systems are direct properties (e.g. `stage.beatDecaySystem`), not factories (`createBeatDecaySystem()`). The system closes over everything it needs at setup time — no reason to defer creation.
+
+## XR Wiring Pattern
+
+Domain modules know nothing about WebXR. The composition root connects XR events to domain modules by extracting the Babylon.js types each module needs.
+
+```ts
+// main.ts — composition root
+const sabers = createSabers(scene, theme)
+const controllers = createControllers(
+    xr.input,
+    (hand, input) => {
+        if (!input.grip) return
+        sabers.attach(hand, input.grip)     // pass TransformNode, not XR type
+    },
+    (hand) => sabers.detach(hand),
+)
+```
+
+The pattern:
+1. A domain module that knows nothing about XR (sabers, trails, menu, haptics)
+2. Main.ts hooks the relevant XR observable to the domain module's API
+3. Main.ts extracts the Babylon type the module needs (grip node, motion controller, mesh)
+4. The domain module receives only what it needs — no XR imports
+
+This scales linearly. Each new XR capability adds wiring in main.ts. No module gains new dependencies. No architecture changes:
+
+```ts
+// Step 5: trails hook into the same connect handler
+(hand, input) => {
+    if (!input.grip) return
+    sabers.attach(hand, input.grip)
+    trails.attach(hand, sabers.get(hand))
+}
+
+// Step 19: menu needs motion controller for button input
+source.onMotionControllerInitObservable.addOnce((mc) => {
+    menu.bindButtons(hand, mc)
+})
+```
+
+Key discovery: Babylon.js creates the grip mesh synchronously in the `WebXRInputSource` constructor (`webXRInputSource.js:45-46`), before `onControllerAddedObservable` fires. No polling needed, no `gripBound` flag. Fully event-driven.
+
+## Infrastructure
+
+```ts
+// types.ts
 type Seconds = number
 type Hand = 'left' | 'right'
 type System = (dt: Seconds) => void
 type Teardown = () => void
+
+// pipeline.ts
+createEventQueue<T>(handler)        // buffer + flush, fire-and-forget events
+createPipeline(systems, queues?)    // ordered execution + queue flush
 ```
 
-Move `Theme`, `handColor()` here (currently in world.ts). Move `PillarPulseTarget` into stage.ts as private.
+## Module Map
 
-### 2. Create `src/pipeline.ts`
-
-ECS-independent infrastructure:
-- `createEventQueue<T>(handler)` — buffer + flush
-- `createPipeline(systems, queues?)` — ordered execution + queue flush
-
-Extracted from patterns proven in `void-saber/src/ecs.ts`.
-
-### 3. Refactor `src/stage.ts`
-
-Remove all Koota imports. Adopt the `createStage()` closure pattern from `void-saber/src/game/environment.ts`:
-- `BeatPulse` trait → `let beatFlash = 0` closure variable
-- `BeatVisuals` trait → closure captures `pillarTargets`, `fogBaseDensity` directly
-- `world.spawn()` → gone
-- `world.onQueryRemove()` → `dispose()` method on handle
-- Export `Stage` interface: `{ onBeat(), beatDecaySystem, dispose() }`
-
-### 4. Update `src/main.ts`
-
-- Import from `types.ts` and `pipeline.ts` instead of `world.ts`
-- Call `createStage(scene, theme)`, capture handle
-- Build system array from handle's `beatDecaySystem`
-- Remove `System` import from world.ts
-
-### 5. Delete `src/world.ts`
-
-All surviving types moved to types.ts. Koota world, traits gone.
-
-### 6. Remove `koota` from dependencies
-
-`pnpm remove koota`
-
-### 7. Update docs
-
-- Delete `docs/koota-ecs.md` (Koota reference, no longer relevant)
-- Delete `docs/Koota-README.md` (library README, no longer relevant)
-- Update `docs/architecture-ToE-review.md` — archive or annotate as superseded
-- Update `CLAUDE.md` — remove Koota references, update architecture section
-
-## Future Module Map (steps 3-23)
-
-Not implemented now, but this is how the architecture extends:
-
+Current (steps 1-2):
 ```
-controllers.ts   — bridgeInput(), tracks connected controllers per hand
-saber.ts         — buildSaber() factory
+main.ts          — composition root: engine, scene, XR, wires modules
+types.ts         — domain type aliases, Theme, handColor()
+stage.ts         — corridor geometry, beat pulse, fog/pillar systems
+```
+
+Steps 3-4 (controllers + sabers):
+```
+controllers.ts   — createControllers(xrInput, onConnect, onDisconnect)
+saber.ts         — buildSaber() factory, BladeSegment/SaberVisual types
+```
+
+Steps 5-6 (trails + collision):
+```
 trail.ts         — buildTrail() factory, startTrail(), constants
-grip-bind.ts     — createGripBindSystem(): poll for grip, parent saber
-trail-update.ts  — createTrailUpdateSystem(): per-frame vertex buffers
+trail-update.ts  — per-frame vertex buffer update system
 collision.ts     — segmentDistance() pure math
 saber-collision.ts — blade-blade check, pushes SaberCollisionEvent
+```
+
+Steps 7-16 (gameplay):
+```
+music-engine.ts  — generateSong(), pure data
+audio-player.ts  — Tone.js playback, onBeat callback
+beat-clock.ts    — timing from AudioContext.currentTime
+beatmap.ts       — BeatNote type, hardcoded JSON per song
 cube-pool.ts     — pre-created meshes, acquire/release, advance system
+cube-collision.ts — saber vs cube, pushes CubeHitEvent
+score.ts         — hits/misses/streak, pure data
+hud.ts           — VR score display
+```
+
+Steps 18-21 (state + UI):
+```
 game-state.ts    — GameState discriminated union, phase gating
+menu.ts          — VR song list, laser pointer
+countdown.ts     — 3-2-1, start audio
+results.ts       — score display, retry/menu
 ```
-
-Step 3 intermediate shape: `Map<Hand, WebXRInputSource>` — stores raw input sources on connect, removes on disconnect. `isHand()` type guard in `types.ts` narrows XR handedness to `Hand`. No per-frame system (Babylon.js updates grip positions automatically).
-
-Step 4+ evolves to `ControllerBundle` — ISI requires atomic creation with all fields present, so the bundle can't exist until sabers/trails do:
-```ts
-interface ControllerBundle {
-  readonly hand: Hand
-  readonly input: WebXRInputSource
-  readonly saber: SaberVisual
-  readonly trail: TrailBundle
-  gripBound: boolean           // no nulls, no optionals
-}
-// Stored in Map<Hand, ControllerBundle>, max 2 entries
-// Created atomically on controller connect, disposed on disconnect
-```
-
-## Files Modified
-
-```
-DELETE  src/world.ts
-EDIT    src/main.ts
-EDIT    src/stage.ts
-CREATE  src/types.ts
-CREATE  src/pipeline.ts
-DELETE  docs/koota-ecs.md
-DELETE  docs/Koota-README.md
-EDIT    docs/architecture-ToE-review.md
-EDIT    CLAUDE.md
-EDIT    package.json (remove koota)
-```
-
-## Verification
-
-1. `pnpm typecheck` — no type errors
-2. `pnpm build` — builds successfully
-3. `pnpm dev` — corridor scene renders, fog + pillar beat pulse works
-4. WebXR emulator — VR session enters, corridor visible in headset
