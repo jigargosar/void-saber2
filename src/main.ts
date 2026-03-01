@@ -89,6 +89,7 @@ function main(): void {
 
     startGameLoop(scene, [
         stage.beatDecaySystem,
+        sabers.trailUpdateSystem,
     ])
 
     engine.runRenderLoop(() => scene.render())
