@@ -5,9 +5,9 @@ Beat Saber clone. Babylon.js + WebXR.
 ## Decisions
 
 - Target: Quest 2 browser (immersive-vr). Dev/testing: Chrome desktop with WebXR emulation extension.
-- Audio: Web Audio API only — no audio files. Synthesized drum patterns (kick/snare/hat) with minor variation per song.
-- Beatmaps: Fixed JSON patterns per song — not procedural, not file-loaded.
-- Songs: 3 songs, each a fixed beatmap + fixed BPM. Different tempos for variety.
+- Audio: Web Audio API only — no audio files. 7 synth instruments (kick/snare/hat/bass/pad/arp/melody) via Tone.js.
+- Music: Procedural composition — seeded RNG, Markov chord progressions, energy curves, variable BPM per section. Uses tonal for music theory.
+- Choreography: Procedural beatmap generation from MusicComposition + BeatTimeline + Difficulty.
 - Menu/results: Full state machine — menu → countdown → playing → paused → results.
 - Scope: All 23 steps. No shortcuts.
 - ECS: Evaluated Koota and Miniplex. Koota's trait factories can't type external Babylon.js objects without nullable defaults — the dominant data pattern across all 23 steps. Miniplex handles this cleanly via `world.add(entity, component)` with full type narrowing on queries — the best TypeScript ECS available. Dropped because development has stalled. Entity inventory (2 controllers, 2 sabers, 2 trails, ~100 pooled cubes) doesn't justify ECS anyway — domain modules with closures suffice. Expand this section as needed, referencing how Miniplex achieved its typesafety.
@@ -20,10 +20,10 @@ Beat Saber clone. Babylon.js + WebXR.
 4. Sabers — blade + handle + glow, attached to controllers, cyan left magenta right
 5. Saber trails — ribbon behind blade tip, fades along tail
 6. Saber-saber sparks — detect intersection, spawn particles, haptic pulse
-7. Audio engine — Web Audio API, synthesized kick/snare/hat/bass, no files
-8. Songs — 3 fixed-BPM tracks with minor drum pattern variation
-9. Beat clock — timing from AudioContext.currentTime, drives everything
-10. Beatmaps — hardcoded JSON per song, each note: time/lane/row/color/direction
+7. Music composer — composeMusic(seed) → MusicComposition (chords, energy, events, variable BPM)
+8. Beat timeline — extractBeatTimeline(composition) → BeatTimeline (resolved beat times)
+9. Music player — createMusicPlayer(composition, onBeat) → MusicPlayer (7 Tone.js instruments)
+10. Choreography — createChoreography(composition, beatTimeline, difficulty) → Choreography (cubes, obstacles)
 11. Cube spawning — pooled rounded cubes, travel toward player, arrive on beat
 12. Directional arrows — arrow on cube face showing required swing direction
 13. Collision — saber vs cube, check swing direction matches

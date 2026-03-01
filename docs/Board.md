@@ -6,7 +6,10 @@ Board
 
 # Ready
 
-- Audio engine — synth kick/snare/hat/bass, master gain, keyboard test triggers (step 7) — half-hearted, needs rework
+- Music composer — composeMusic(seed) → MusicComposition (step 7)
+- Beat timeline — extractBeatTimeline(composition) → BeatTimeline (step 8)
+- Music player — createMusicPlayer(composition, onBeat) → MusicPlayer (step 9)
+- Choreography — createChoreography(composition, beatTimeline, difficulty) → Choreography (step 10)
 
 # InProgress
 

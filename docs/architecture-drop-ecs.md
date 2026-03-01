@@ -102,7 +102,7 @@ stage.ts         — corridor geometry, beat pulse, fog/pillar systems
 saber.ts         — createSabers() module, attach/detach, trailUpdateSystem
                     (no controllers.ts — XR wiring lives in main.ts)
 trail.ts         — createTrail() factory, velocity-driven opacity, live sample
-audio.ts         — createAudioEngine(), synth triggers, master gain (needs rework)
+audio.ts         — createAudioEngine(), synth triggers, master gain (replaced by music-player.ts)
 ```
 
 Future steps 6+ (collision, gameplay, UI):
@@ -111,12 +111,33 @@ collision.ts     — segmentDistance() pure math
 saber-collision.ts — blade-blade check, pushes SaberCollisionEvent
 ```
 
-Steps 7-16 (gameplay):
+Steps 7-10 (music + gameplay choreography):
 ```
-audio.ts         — createAudioEngine(), synth triggers, master gain
-music-engine.ts  — generateSong(), pure data
-beat-clock.ts    — timing from AudioContext.currentTime
-beatmap.ts       — BeatNote type, hardcoded JSON per song
+music-composer.ts  — composeMusic(seed) → MusicComposition, pure data (tonal)
+beat-timeline.ts   — extractBeatTimeline(composition) → BeatTimeline
+music-player.ts    — createMusicPlayer(composition, onBeat) → MusicPlayer (tone)
+choreography.ts    — createChoreography(composition, beatTimeline, difficulty) → Choreography
+```
+
+Dependency flow:
+```
+music-composer
+      │
+ MusicComposition
+      │
+      ├────────────────┐
+      │                │
+ music-player    beat-timeline
+                       │
+                  BeatTimeline
+                       │
+                 choreography
+                       │
+                  Choreography
+```
+
+Steps 11-16 (gameplay):
+```
 cube-pool.ts     — pre-created meshes, acquire/release, advance system
 cube-collision.ts — saber vs cube, pushes CubeHitEvent
 score.ts         — hits/misses/streak, pure data

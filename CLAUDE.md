@@ -55,4 +55,5 @@ See `docs/architecture-drop-ecs.md` for XR wiring pattern and full module map.
 ## Key Dependencies
 
 - `@babylonjs/core`, `@babylonjs/loaders` — 3D engine + WebXR
-- `tone`, `tonal` — audio synthesis + music theory
+- `tone` — audio synthesis (music-player.ts)
+- `tonal` — music theory (music-composer.ts)
