@@ -11,7 +11,7 @@ import { type Theme, type System, type Teardown } from './types'
 import { createSplash } from './splash-page/splash'
 import { createLobbyPage } from './lobby-page/lobby-page'
 import { createArenaPage } from './arena-page/arena-page'
-import { createXRSession, type XRSession } from './xr-session'
+import { createXRSession } from './xr-session'
 
 const EYE_HEIGHT = 1.6
 
@@ -36,7 +36,7 @@ function setupEngine(): { engine: Engine; scene: Scene } {
     return { engine, scene }
 }
 
-// ── Router (manages page switching, lives in main) ──────────
+// ── Router (manages full page lifecycle) ────────────────────
 
 type SystemsSetter = (systems: readonly System[]) => void
 
@@ -44,15 +44,18 @@ type Route =
     | { readonly page: 'lobby' }
     | { readonly page: 'arena' }
 
-interface Router {
-    dispose: Teardown
-}
-
-function createRouter(
+async function createRouter(
     scene: Scene,
-    xrSession: XRSession,
     setSystems: SystemsSetter,
-): Router {
+): Promise<void> {
+    // Splash while waiting for XR entry
+    const splash = createSplash(scene)
+    setSystems(splash.systems)
+
+    const xrSession = await createXRSession(scene)
+    splash.dispose()
+
+    // Page navigation
     let teardown: Teardown = () => {}
 
     function navigate(route: Route): void {
@@ -77,23 +80,14 @@ function createRouter(
     }
 
     navigate({ page: 'lobby' })
-
-    return {
-        dispose() {
-            teardown()
-            setSystems([])
-        },
-    }
 }
 
-// ── Boot sequence ───────────────────────────────────────────
+// ── Boot ────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
     const { engine, scene } = setupEngine()
 
-    // Splash renders while "Enter VR" button waits for user
-    const splash = createSplash(scene)
-    let systems: readonly System[] = splash.systems
+    let systems: readonly System[] = []
 
     // Render loop — always running, reads current systems
     scene.onBeforeRenderObservable.add(() => {
@@ -105,12 +99,8 @@ async function main(): Promise<void> {
     engine.runRenderLoop(() => scene.render())
     window.addEventListener('resize', () => engine.resize())
 
-    // Await user entering VR — splash visible the whole time
-    const xrSession = await createXRSession(scene)
-    splash.dispose()
-
-    // Router takes over — lobby first, updates systems on every page switch
-    createRouter(scene, xrSession, (s) => { systems = s })
+    // Router owns all page lifecycle: splash → XR → lobby ↔ arena
+    await createRouter(scene, (s) => { systems = s }) 
 }
 
 main().catch(console.error)
