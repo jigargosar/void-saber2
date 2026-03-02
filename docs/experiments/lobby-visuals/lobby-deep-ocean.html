@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Lobby: Deep Ocean</title>
+        <style>
+            * { margin: 0; padding: 0; }
+            canvas { width: 100vw; height: 100vh; display: block; }
+        </style>
+    </head>
+    <body>
+        <canvas id="canvas"></canvas>
+        <script type="module">
+            import { Engine } from "@babylonjs/core/Engines/engine";
+            import { Scene } from "@babylonjs/core/scene";
+            import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
+            import { Vector3, Color3, Color4 } from "@babylonjs/core/Maths/math";
+            import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+            import { Mesh } from "@babylonjs/core/Meshes/mesh";
+            import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
+            import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+            import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
+            import { PointLight } from "@babylonjs/core/Lights/pointLight";
+            import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
+            import { GlowLayer } from "@babylonjs/core/Layers/glowLayer";
+            import { ParticleSystem } from "@babylonjs/core/Particles/particleSystem";
+            import { Texture } from "@babylonjs/core/Materials/Textures/texture";
+            import { RawTexture } from "@babylonjs/core/Materials/Textures/rawTexture";
+            import { Animation } from "@babylonjs/core/Animations/animation";
+            import { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
+            import "@babylonjs/core/Helpers/sceneHelpers";
+            import "@babylonjs/core/Materials/Textures/Loaders/envTextureLoader";
+            import "@babylonjs/core/Meshes/Builders/ribbonBuilder";
+            import "@babylonjs/core/Meshes/Builders/tubeBuilder";
+            import "@babylonjs/core/Meshes/Builders/sphereBuilder";
+            import "@babylonjs/core/Meshes/Builders/groundBuilder";
+            import "@babylonjs/core/Meshes/Builders/boxBuilder";
+            import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
+            import "@babylonjs/core/Meshes/Builders/discBuilder";
+            import "@babylonjs/core/Meshes/instancedMesh";
+            import "@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent";
+
+            // ── Constants ──────────────────────────────────────────────
+            const ABYSS_BLACK = Color3.FromHexString("#040810");
+            const BIO_GREEN = Color3.FromHexString("#39ff8e");
+            const ELECTRIC_BLUE = Color3.FromHexString("#1e56ff");
+            const MURKY_TEAL = Color3.FromHexString("#0f3b3b");
+            const SOFT_PINK = Color3.FromHexString("#ff6b9d");
+            const SAND_COLOR = Color3.FromHexString("#1a1a10");
+            const ROCK_COLOR = Color3.FromHexString("#0d0d0a");
+            const FOG_DISTANCE = 18;
+            const TAU = Math.PI * 2;
+
+            // ── Helpers ────────────────────────────────────────────────
+            function randomRange(min, max) {
+                return Math.random() * (max - min) + min;
+            }
+
+            function randomSign() {
+                return Math.random() < 0.5 ? -1 : 1;
+            }
+
+            function lerpColor3(a, b, t) {
+                return new Color3(
+                    a.r + (b.r - a.r) * t,
+                    a.g + (b.g - a.g) * t,
+                    a.b + (b.b - a.b) * t
+                );
+            }
+
+            // ── Engine + Scene ─────────────────────────────────────────
+            const canvas = document.getElementById("canvas");
+            const engine = new Engine(canvas, true, { stencil: true });
+            const scene = new Scene(engine);
+
+            scene.clearColor = new Color4(0.016, 0.031, 0.063, 1);
+            scene.fogMode = Scene.FOGMODE_EXP2;
+            scene.fogDensity = 0.07;
+            scene.fogColor = new Color3(0.02, 0.04, 0.06);
+            scene.ambientColor = new Color3(0.01, 0.02, 0.03);
+
+            // ── Camera ─────────────────────────────────────────────────
+            const camera = new FreeCamera("camera", new Vector3(0, 1.6, 3), scene);
+            camera.setTarget(new Vector3(0, 1.6, 0));
+            camera.attachControl(canvas, true);
+            camera.minZ = 0.1;
+            camera.maxZ = 60;
+            camera.speed = 0.3;
+
+            // ── Glow Layer ─────────────────────────────────────────────
+            const glowLayer = new GlowLayer("glow", scene, {
+                mainTextureFixedSize: 512,
+                blurKernelSize: 64,
+            });
+            glowLayer.intensity = 1.2;
+
+            // ── Dim Ambient Light ──────────────────────────────────────
+            const ambientLight = new HemisphericLight("ambient", new Vector3(0, 1, 0), scene);
+            ambientLight.intensity = 0.03;
+            ambientLight.diffuse = MURKY_TEAL;
+            ambientLight.groundColor = ABYSS_BLACK;
+
+            // ── Sand Floor ─────────────────────────────────────────────
+            const ground = MeshBuilder.CreateGround(
+                "ocean-floor",
+                { width: 50, height: 50, subdivisions: 80 },
+                scene
+            );
+            const groundPositions = ground.getVerticesData("position");
+            for (let i = 0; i < groundPositions.length; i += 3) {
+                const x = groundPositions[i];
+                const z = groundPositions[i + 2];
+                // Gentle undulations using layered sine waves
+                groundPositions[i + 1] =
+                    Math.sin(x * 0.3) * 0.15 +
+                    Math.sin(z * 0.4 + 1.2) * 0.12 +
+                    Math.sin(x * 0.7 + z * 0.5) * 0.08 +
+                    (Math.random() - 0.5) * 0.03;
+            }
+            ground.updateVerticesData("position", groundPositions);
+            ground.createNormals(true);
+
+            const groundMat = new PBRMaterial("ground-mat", scene);
+            groundMat.albedoColor = SAND_COLOR;
+            groundMat.roughness = 0.95;
+            groundMat.metallic = 0.0;
+            groundMat.emissiveColor = new Color3(0.005, 0.008, 0.005);
+            ground.material = groundMat;
+
+            // ── Caustic Light (faint overhead ripples) ──────────────────
+            const causticLight = new PointLight("caustic", new Vector3(0, 12, 0), scene);
+            causticLight.diffuse = new Color3(0.1, 0.15, 0.12);
+            causticLight.intensity = 0.4;
+            causticLight.range = 30;
+
+            // Animate caustic light position for ripple effect
+            let causticTime = 0;
+
+            // ── Rocks ──────────────────────────────────────────────────
+            function createRock(name, position, scale) {
+                const rock = MeshBuilder.CreateSphere(
+                    name,
+                    { diameter: 1, segments: 6 },
+                    scene
+                );
+                rock.position = position;
+                rock.scaling = scale;
+                rock.rotation.y = Math.random() * TAU;
+                rock.rotation.x = (Math.random() - 0.5) * 0.3;
+
+                const mat = new PBRMaterial(name + "-mat", scene);
+                mat.albedoColor = ROCK_COLOR;
+                mat.roughness = 0.9;
+                mat.metallic = 0.1;
+                rock.material = mat;
+                return rock;
+            }
+
+            const rockPositions = [
+                { pos: new Vector3(-3, 0.15, -2), scale: new Vector3(1.2, 0.6, 0.9) },
+                { pos: new Vector3(4, 0.1, -4), scale: new Vector3(0.8, 0.4, 1.1) },
+                { pos: new Vector3(-5, 0.2, 1), scale: new Vector3(1.5, 0.7, 1.0) },
+                { pos: new Vector3(2, 0.12, 3), scale: new Vector3(0.7, 0.35, 0.8) },
+                { pos: new Vector3(-1.5, 0.18, -6), scale: new Vector3(1.0, 0.5, 1.3) },
+                { pos: new Vector3(6, 0.15, -1), scale: new Vector3(0.9, 0.45, 0.7) },
+                { pos: new Vector3(-4, 0.1, 5), scale: new Vector3(1.1, 0.55, 0.85) },
+                { pos: new Vector3(3, 0.22, -8), scale: new Vector3(1.3, 0.65, 1.0) },
+                { pos: new Vector3(-7, 0.13, -3), scale: new Vector3(0.85, 0.4, 1.2) },
+                { pos: new Vector3(5.5, 0.17, 5), scale: new Vector3(1.0, 0.5, 0.9) },
+            ];
+
+            for (let i = 0; i < rockPositions.length; i++) {
+                const r = rockPositions[i];
+                createRock("rock-" + i, r.pos, r.scale);
+            }
+
+            // ── Coral Structures (Procedural L-system branching) ───────
+            function createCoralBranch(scene, basePos, height, thickness, color, glowColor) {
+                const segments = 6;
+                const points = [basePos.clone()];
+                let dir = new Vector3(0, 1, 0);
+                const segLen = height / segments;
+
+                for (let i = 1; i <= segments; i++) {
+                    // Branch deviates more toward the top
+                    const deviation = i / segments * 0.4;
+                    dir = new Vector3(
+                        dir.x + (Math.random() - 0.5) * deviation,
+                        dir.y,
+                        dir.z + (Math.random() - 0.5) * deviation
+                    ).normalize();
+                    const prev = points[i - 1];
+                    points.push(
+                        new Vector3(
+                            prev.x + dir.x * segLen,
+                            prev.y + dir.y * segLen,
+                            prev.z + dir.z * segLen
+                        )
+                    );
+                }
+
+                const radiusFunc = (i) => {
+                    const t = i / segments;
+                    return thickness * (1 - t * 0.7);
+                };
+
+                const tube = MeshBuilder.CreateTube(
+                    "coral-branch",
+                    { path: points, radiusFunction: radiusFunc, tessellation: 8, cap: 2 },
+                    scene
+                );
+
+                const mat = new PBRMaterial("coral-mat-" + Math.random(), scene);
+                mat.albedoColor = color;
+                mat.roughness = 0.7;
+                mat.metallic = 0.05;
+                mat.emissiveColor = glowColor.scale(0.15);
+                tube.material = mat;
+
+                return tube;
+            }
+
+            function createCoralCluster(scene, basePosition, coralHeight, coralColor, glowColor) {
+                const branchCount = Math.floor(randomRange(3, 7));
+                const meshes = [];
+
+                for (let i = 0; i < branchCount; i++) {
+                    const offset = new Vector3(
+                        basePosition.x + (Math.random() - 0.5) * 0.3,
+                        basePosition.y,
+                        basePosition.z + (Math.random() - 0.5) * 0.3
+                    );
+                    const h = coralHeight * randomRange(0.5, 1.0);
+                    const thick = randomRange(0.02, 0.06);
+                    meshes.push(createCoralBranch(scene, offset, h, thick, coralColor, glowColor));
+                }
+
+                return meshes;
+            }
+
+            // Place coral clusters around the scene
+            const coralData = [
+                { pos: new Vector3(-2, 0, -1), h: 1.2, color: MURKY_TEAL, glow: BIO_GREEN },
+                { pos: new Vector3(1.5, 0, -3), h: 0.8, color: MURKY_TEAL, glow: ELECTRIC_BLUE },
+                { pos: new Vector3(-4, 0, -5), h: 1.5, color: MURKY_TEAL, glow: BIO_GREEN },
+                { pos: new Vector3(3, 0, -1.5), h: 1.0, color: MURKY_TEAL, glow: SOFT_PINK },
+                { pos: new Vector3(-1, 0, 2), h: 0.7, color: MURKY_TEAL, glow: BIO_GREEN },
+                { pos: new Vector3(5, 0, -3), h: 1.8, color: MURKY_TEAL, glow: ELECTRIC_BLUE },
+                { pos: new Vector3(-6, 0, 0), h: 1.3, color: MURKY_TEAL, glow: BIO_GREEN },
+                { pos: new Vector3(0, 0, -7), h: 2.0, color: MURKY_TEAL, glow: BIO_GREEN },
+                { pos: new Vector3(-3, 0, 4), h: 0.9, color: MURKY_TEAL, glow: SOFT_PINK },
+                { pos: new Vector3(4.5, 0, 2), h: 1.1, color: MURKY_TEAL, glow: ELECTRIC_BLUE },
+            ];
+
+            for (const cd of coralData) {
+                createCoralCluster(scene, cd.pos, cd.h, cd.color, cd.glow);
+            }
+
+            // ── Bioluminescent Orbs on Coral ───────────────────────────
+            const bioOrbs = [];
+
+            function createBioOrb(position, color, radius, intensity) {
+                const orb = MeshBuilder.CreateSphere(
+                    "bio-orb",
+                    { diameter: radius * 2, segments: 8 },
+                    scene
+                );
+                orb.position = position;
+
+                const mat = new StandardMaterial("bio-orb-mat-" + Math.random(), scene);
+                mat.emissiveColor = color;
+                mat.disableLighting = true;
+                mat.alpha = 0.85;
+                orb.material = mat;
+
+                const light = new PointLight("bio-light-" + Math.random(), position, scene);
+                light.diffuse = color;
+                light.intensity = intensity;
+                light.range = 3;
+
+                glowLayer.addIncludedOnlyMesh(orb);
+
+                bioOrbs.push({
+                    mesh: orb,
+                    light,
+                    mat,
+                    baseColor: color,
+                    baseIntensity: intensity,
+                    phase: Math.random() * TAU,
+                    speed: randomRange(0.3, 0.8),
+                });
+
+                return orb;
+            }
+
+            // Scatter bio-orbs around coral positions
+            for (const cd of coralData) {
+                const orbCount = Math.floor(randomRange(2, 5));
+                for (let i = 0; i < orbCount; i++) {
+                    const orbPos = new Vector3(
+                        cd.pos.x + (Math.random() - 0.5) * 0.8,
+                        cd.pos.y + randomRange(0.3, cd.h * 0.9),
+                        cd.pos.z + (Math.random() - 0.5) * 0.8
+                    );
+                    const color = Math.random() < 0.7 ? BIO_GREEN : ELECTRIC_BLUE;
+                    createBioOrb(orbPos, color, randomRange(0.03, 0.07), randomRange(0.15, 0.4));
+                }
+            }
+
+            // Menu area cluster of bio-orbs (focused pool of light)
+            const menuClusterCenter = new Vector3(0, 3.5, -1);
+            for (let i = 0; i < 8; i++) {
+                const orbPos = new Vector3(
+                    menuClusterCenter.x + (Math.random() - 0.5) * 1.5,
+                    menuClusterCenter.y + (Math.random() - 0.5) * 0.8,
+                    menuClusterCenter.z + (Math.random() - 0.5) * 1.0
+                );
+                createBioOrb(orbPos, BIO_GREEN, randomRange(0.04, 0.08), randomRange(0.3, 0.6));
+            }
+
+            // ── Kelp Ribbons ───────────────────────────────────────────
+            function createKelp(baseX, baseZ, height, bladeCount) {
+                for (let b = 0; b < bladeCount; b++) {
+                    const offsetX = (Math.random() - 0.5) * 0.15;
+                    const offsetZ = (Math.random() - 0.5) * 0.15;
+                    const segments = 20;
+                    const width = randomRange(0.06, 0.12);
+                    const pathPoints = [];
+                    const phaseOffset = Math.random() * TAU;
+
+                    for (let i = 0; i <= segments; i++) {
+                        const t = i / segments;
+                        pathPoints.push(
+                            new Vector3(
+                                baseX + offsetX,
+                                t * height,
+                                baseZ + offsetZ
+                            )
+                        );
+                    }
+
+                    // Create ribbon from two paths (flat blade)
+                    const path1 = pathPoints.map(
+                        (p) => new Vector3(p.x - width / 2, p.y, p.z)
+                    );
+                    const path2 = pathPoints.map(
+                        (p) => new Vector3(p.x + width / 2, p.y, p.z)
+                    );
+
+                    const ribbon = MeshBuilder.CreateRibbon(
+                        "kelp",
+                        { pathArray: [path1, path2], updatable: true },
+                        scene
+                    );
+
+                    const mat = new StandardMaterial("kelp-mat-" + Math.random(), scene);
+                    mat.diffuseColor = new Color3(0.05, 0.2, 0.08);
+                    mat.emissiveColor = BIO_GREEN.scale(0.05);
+                    mat.alpha = 0.5;
+                    mat.backFaceCulling = false;
+                    ribbon.material = mat;
+
+                    // Store for animation
+                    ribbon.metadata = {
+                        basePath1: path1.map((p) => p.clone()),
+                        basePath2: path2.map((p) => p.clone()),
+                        phaseOffset,
+                        height,
+                        segments,
+                        width,
+                    };
+
+                    kelpBlades.push(ribbon);
+                }
+            }
+
+            const kelpBlades = [];
+            const kelpPositions = [
+                { x: -2.5, z: -3, h: 4.5, blades: 4 },
+                { x: 1, z: -5, h: 5.0, blades: 5 },
+                { x: -5, z: 1, h: 4.0, blades: 3 },
+                { x: 3, z: 2, h: 4.8, blades: 4 },
+                { x: -1, z: -8, h: 3.5, blades: 3 },
+                { x: 4, z: -6, h: 5.2, blades: 5 },
+                { x: -6, z: -4, h: 4.2, blades: 4 },
+                { x: 2, z: 5, h: 3.8, blades: 3 },
+                { x: -3, z: 6, h: 4.5, blades: 4 },
+                { x: 7, z: -2, h: 4.0, blades: 3 },
+            ];
+
+            for (const k of kelpPositions) {
+                createKelp(k.x, k.z, k.h, k.blades);
+            }
+
+            // ── Skeletal Arches (Massive Rib Structures) ───────────────
+            function createRibArch(scene, startPos, archHeight, archSpan, tiltAngle) {
+                const segments = 24;
+                const points = [];
+
+                for (let i = 0; i <= segments; i++) {
+                    const t = i / segments;
+                    const angle = t * Math.PI; // Half-circle arch
+                    const x = startPos.x + Math.cos(angle) * (archSpan / 2);
+                    const y = startPos.y + Math.sin(angle) * archHeight;
+                    const z = startPos.z;
+                    points.push(new Vector3(x, y, z));
+                }
+
+                const radiusFunc = (i) => {
+                    const t = i / segments;
+                    const centerThick = 1 - Math.abs(t - 0.5) * 2;
+                    return 0.08 + centerThick * 0.12;
+                };
+
+                const rib = MeshBuilder.CreateTube(
+                    "rib-arch",
+                    { path: points, radiusFunction: radiusFunc, tessellation: 10, cap: 2 },
+                    scene
+                );
+
+                rib.rotation.y = tiltAngle;
+
+                const mat = new PBRMaterial("rib-mat-" + Math.random(), scene);
+                mat.albedoColor = new Color3(0.08, 0.07, 0.06);
+                mat.roughness = 0.85;
+                mat.metallic = 0.05;
+                mat.emissiveColor = new Color3(0.01, 0.015, 0.01);
+                rib.material = mat;
+
+                return rib;
+            }
+
+            // Several ribs forming a skeletal structure in the mid-distance
+            createRibArch(scene, new Vector3(-3, 0, -10), 6, 10, 0.1);
+            createRibArch(scene, new Vector3(-2.5, 0, -12), 7, 11, 0.08);
+            createRibArch(scene, new Vector3(-3.5, 0, -14), 5.5, 9, 0.15);
+            createRibArch(scene, new Vector3(-2, 0, -16), 6.5, 10.5, 0.05);
+
+            // Second set at a different angle, farther away
+            createRibArch(scene, new Vector3(5, 0, -13), 5, 8, -0.3);
+            createRibArch(scene, new Vector3(5.5, 0, -15), 5.5, 8.5, -0.25);
+
+            // ── Jellyfish ──────────────────────────────────────────────
+            const jellyfish = [];
+
+            function createJellyfish(scene, position, size, bodyColor, tentacleColor) {
+                // Bell (dome shape)
+                const bell = MeshBuilder.CreateSphere(
+                    "jelly-bell",
+                    { diameter: size, segments: 12, slice: 0.5 },
+                    scene
+                );
+                bell.position = position.clone();
+                bell.rotation.x = Math.PI; // Flip dome upside down
+
+                const bellMat = new StandardMaterial("jelly-bell-mat-" + Math.random(), scene);
+                bellMat.emissiveColor = bodyColor;
+                bellMat.diffuseColor = bodyColor.scale(0.3);
+                bellMat.alpha = 0.45;
+                bellMat.backFaceCulling = false;
+                bellMat.disableLighting = true;
+                bell.material = bellMat;
+                glowLayer.addIncludedOnlyMesh(bell);
+
+                // Glow light from jellyfish
+                const jellyLight = new PointLight("jelly-light-" + Math.random(), position.clone(), scene);
+                jellyLight.diffuse = bodyColor;
+                jellyLight.intensity = 0.5;
+                jellyLight.range = 5;
+
+                // Tentacles
+                const tentacles = [];
+                const tentacleCount = Math.floor(randomRange(4, 8));
+                for (let t = 0; t < tentacleCount; t++) {
+                    const angle = (t / tentacleCount) * TAU;
+                    const tentPoints = [];
+                    const tentLen = size * randomRange(2, 4);
+                    const segCount = 12;
+                    for (let s = 0; s <= segCount; s++) {
+                        const st = s / segCount;
+                        tentPoints.push(
+                            new Vector3(
+                                position.x + Math.cos(angle) * size * 0.3 * (1 - st * 0.5),
+                                position.y - st * tentLen,
+                                position.z + Math.sin(angle) * size * 0.3 * (1 - st * 0.5)
+                            )
+                        );
+                    }
+                    const tentacle = MeshBuilder.CreateTube(
+                        "tentacle",
+                        {
+                            path: tentPoints,
+                            radiusFunction: (i) => 0.01 * (1 - (i / segCount) * 0.8),
+                            tessellation: 6,
+                            updatable: true,
+                        },
+                        scene
+                    );
+                    const tentMat = new StandardMaterial("tent-mat-" + Math.random(), scene);
+                    tentMat.emissiveColor = tentacleColor;
+                    tentMat.alpha = 0.3;
+                    tentMat.disableLighting = true;
+                    tentMat.backFaceCulling = false;
+                    tentacle.material = tentMat;
+
+                    tentacles.push({
+                        mesh: tentacle,
+                        basePoints: tentPoints.map((p) => p.clone()),
+                        segCount,
+                        angle,
+                    });
+                }
+
+                const jf = {
+                    bell,
+                    bellMat,
+                    light: jellyLight,
+                    tentacles,
+                    baseY: position.y,
+                    phase: Math.random() * TAU,
+                    bobSpeed: randomRange(0.2, 0.5),
+                    bobAmount: randomRange(0.15, 0.4),
+                    driftX: randomRange(-0.05, 0.05),
+                    driftZ: randomRange(-0.05, 0.05),
+                    pulsePhase: Math.random() * TAU,
+                    bodyColor,
+                };
+                jellyfish.push(jf);
+                return jf;
+            }
+
+            // Place jellyfish at various heights
+            createJellyfish(scene, new Vector3(-3, 3.5, -4), 0.6, ELECTRIC_BLUE, SOFT_PINK);
+            createJellyfish(scene, new Vector3(4, 4.0, -6), 0.8, SOFT_PINK, ELECTRIC_BLUE);
+            createJellyfish(scene, new Vector3(-1, 5.0, -8), 0.5, ELECTRIC_BLUE, BIO_GREEN);
+            createJellyfish(scene, new Vector3(2, 3.0, -2), 0.45, lerpColor3(ELECTRIC_BLUE, SOFT_PINK, 0.5), SOFT_PINK);
+            createJellyfish(scene, new Vector3(-5, 4.5, -6), 0.7, SOFT_PINK, ELECTRIC_BLUE);
+            createJellyfish(scene, new Vector3(6, 3.8, -3), 0.55, ELECTRIC_BLUE, BIO_GREEN);
+            createJellyfish(scene, new Vector3(0, 6.0, -12), 1.0, ELECTRIC_BLUE.scale(0.7), SOFT_PINK);
+
+            // ── Marine Snow Particle System ─────────────────────────────
+            // Create a small white dot texture procedurally
+            const particleTexSize = 32;
+            const particleTexData = new Uint8Array(particleTexSize * particleTexSize * 4);
+            for (let y = 0; y < particleTexSize; y++) {
+                for (let x = 0; x < particleTexSize; x++) {
+                    const idx = (y * particleTexSize + x) * 4;
+                    const cx = x - particleTexSize / 2;
+                    const cy = y - particleTexSize / 2;
+                    const dist = Math.sqrt(cx * cx + cy * cy) / (particleTexSize / 2);
+                    const alpha = Math.max(0, 1 - dist * dist) * 255;
+                    particleTexData[idx] = 255;
+                    particleTexData[idx + 1] = 255;
+                    particleTexData[idx + 2] = 255;
+                    particleTexData[idx + 3] = alpha;
+                }
+            }
+            const particleTex = RawTexture.CreateRGBATexture(
+                particleTexData,
+                particleTexSize,
+                particleTexSize,
+                scene,
+                false,
+                false
+            );
+
+            const marineSnow = new ParticleSystem("marine-snow", 2000, scene);
+            marineSnow.particleTexture = particleTex;
+            marineSnow.minSize = 0.005;
+            marineSnow.maxSize = 0.02;
+            marineSnow.minLifeTime = 8;
+            marineSnow.maxLifeTime = 15;
+            marineSnow.emitRate = 150;
+            marineSnow.color1 = new Color4(0.8, 0.85, 0.9, 0.3);
+            marineSnow.color2 = new Color4(0.6, 0.7, 0.8, 0.15);
+            marineSnow.colorDead = new Color4(0.3, 0.4, 0.5, 0);
+            marineSnow.direction1 = new Vector3(-0.02, -0.05, -0.02);
+            marineSnow.direction2 = new Vector3(0.02, -0.02, 0.02);
+            marineSnow.gravity = new Vector3(0, -0.01, 0);
+            marineSnow.minEmitBox = new Vector3(-12, 8, -12);
+            marineSnow.maxEmitBox = new Vector3(12, 10, 2);
+            marineSnow.blendMode = ParticleSystem.BLENDMODE_ADD;
+            marineSnow.start();
+
+            // ── Bioluminescent Spore Particles ──────────────────────────
+            const bioSpores = new ParticleSystem("bio-spores", 500, scene);
+            bioSpores.particleTexture = particleTex;
+            bioSpores.minSize = 0.01;
+            bioSpores.maxSize = 0.04;
+            bioSpores.minLifeTime = 5;
+            bioSpores.maxLifeTime = 10;
+            bioSpores.emitRate = 30;
+            bioSpores.color1 = new Color4(0.22, 1.0, 0.56, 0.5);
+            bioSpores.color2 = new Color4(0.12, 0.34, 1.0, 0.4);
+            bioSpores.colorDead = new Color4(0, 0, 0, 0);
+            bioSpores.direction1 = new Vector3(-0.03, 0.02, -0.03);
+            bioSpores.direction2 = new Vector3(0.03, 0.06, 0.03);
+            bioSpores.gravity = new Vector3(0, 0.005, 0);
+            bioSpores.minEmitBox = new Vector3(-8, 0.2, -8);
+            bioSpores.maxEmitBox = new Vector3(8, 0.5, 2);
+            bioSpores.blendMode = ParticleSystem.BLENDMODE_ADD;
+            bioSpores.start();
+
+            // ── Caustic Light Ripple Texture on Floor ────────────────────
+            // Simulate by animating several dim point lights in a pattern
+            const causticLights = [];
+            for (let i = 0; i < 5; i++) {
+                const cl = new PointLight(
+                    "caustic-ripple-" + i,
+                    new Vector3(
+                        (Math.random() - 0.5) * 10,
+                        0.3,
+                        (Math.random() - 0.5) * 10
+                    ),
+                    scene
+                );
+                cl.diffuse = new Color3(0.06, 0.1, 0.08);
+                cl.intensity = 0.15;
+                cl.range = 4;
+                causticLights.push({
+                    light: cl,
+                    baseX: cl.position.x,
+                    baseZ: cl.position.z,
+                    phase: Math.random() * TAU,
+                    speed: randomRange(0.1, 0.3),
+                    radius: randomRange(2, 5),
+                });
+            }
+
+            // ── Animation Loop ─────────────────────────────────────────
+            let globalTime = 0;
+
+            scene.registerBeforeRender(() => {
+                const dt = engine.getDeltaTime() / 1000;
+                globalTime += dt;
+
+                // ── Bio-orb pulsing ──
+                for (const orb of bioOrbs) {
+                    const pulse = 0.5 + 0.5 * Math.sin(globalTime * orb.speed + orb.phase);
+                    const intensity = orb.baseIntensity * (0.4 + pulse * 0.6);
+                    orb.light.intensity = intensity;
+                    orb.mat.emissiveColor = orb.baseColor.scale(0.5 + pulse * 0.5);
+                }
+
+                // ── Kelp swaying ──
+                for (const blade of kelpBlades) {
+                    const meta = blade.metadata;
+                    const path1 = [];
+                    const path2 = [];
+                    for (let i = 0; i <= meta.segments; i++) {
+                        const t = i / meta.segments;
+                        // Sway increases with height
+                        const swayX =
+                            Math.sin(globalTime * 0.5 + meta.phaseOffset + t * 2) *
+                            t * t * 0.3;
+                        const swayZ =
+                            Math.cos(globalTime * 0.4 + meta.phaseOffset + t * 1.5) *
+                            t * t * 0.15;
+
+                        const bp1 = meta.basePath1[i];
+                        const bp2 = meta.basePath2[i];
+                        path1.push(new Vector3(bp1.x + swayX, bp1.y, bp1.z + swayZ));
+                        path2.push(new Vector3(bp2.x + swayX, bp2.y, bp2.z + swayZ));
+                    }
+                    MeshBuilder.CreateRibbon(
+                        null,
+                        { pathArray: [path1, path2], instance: blade }
+                    );
+                }
+
+                // ── Jellyfish animation ──
+                for (const jf of jellyfish) {
+                    // Bobbing
+                    const bob = Math.sin(globalTime * jf.bobSpeed + jf.phase) * jf.bobAmount;
+                    jf.bell.position.y = jf.baseY + bob;
+                    jf.bell.position.x += jf.driftX * dt;
+                    jf.bell.position.z += jf.driftZ * dt;
+                    jf.light.position.copyFrom(jf.bell.position);
+
+                    // Pulsing glow
+                    const pulse = 0.5 + 0.5 * Math.sin(globalTime * 1.2 + jf.pulsePhase);
+                    jf.bellMat.emissiveColor = jf.bodyColor.scale(0.5 + pulse * 0.5);
+                    jf.bellMat.alpha = 0.3 + pulse * 0.25;
+                    jf.light.intensity = 0.3 + pulse * 0.4;
+
+                    // Bell pulsation (scale)
+                    const bellPulse = 1 + Math.sin(globalTime * 1.5 + jf.pulsePhase) * 0.08;
+                    jf.bell.scaling.y = bellPulse;
+                    jf.bell.scaling.x = 1 + (1 - bellPulse) * 0.5;
+                    jf.bell.scaling.z = 1 + (1 - bellPulse) * 0.5;
+
+                    // Tentacle sway
+                    for (const tent of jf.tentacles) {
+                        const newPoints = [];
+                        for (let s = 0; s <= tent.segCount; s++) {
+                            const st = s / tent.segCount;
+                            const bp = tent.basePoints[s];
+                            const tentSwayX =
+                                Math.sin(globalTime * 0.8 + tent.angle + st * 3) *
+                                st * 0.15;
+                            const tentSwayZ =
+                                Math.cos(globalTime * 0.6 + tent.angle + st * 2) *
+                                st * 0.1;
+                            newPoints.push(
+                                new Vector3(
+                                    jf.bell.position.x +
+                                        Math.cos(tent.angle) * jf.bell.scaling.x * 0.3 * (1 - st * 0.5) +
+                                        tentSwayX,
+                                    jf.bell.position.y - st * (tent.basePoints[tent.segCount].y - tent.basePoints[0].y) * -1,
+                                    jf.bell.position.z +
+                                        Math.sin(tent.angle) * jf.bell.scaling.z * 0.3 * (1 - st * 0.5) +
+                                        tentSwayZ
+                                )
+                            );
+                        }
+                        MeshBuilder.CreateTube(null, {
+                            path: newPoints,
+                            radiusFunction: (i) =>
+                                0.01 * (1 - (i / tent.segCount) * 0.8),
+                            tessellation: 6,
+                            instance: tent.mesh,
+                        });
+                    }
+                }
+
+                // ── Caustic light movement ──
+                causticTime += dt;
+                causticLight.position.x = Math.sin(causticTime * 0.15) * 3;
+                causticLight.position.z = Math.cos(causticTime * 0.12) * 3;
+                causticLight.intensity = 0.3 + Math.sin(causticTime * 0.3) * 0.15;
+
+                for (const cl of causticLights) {
+                    cl.light.position.x =
+                        cl.baseX + Math.sin(globalTime * cl.speed + cl.phase) * cl.radius;
+                    cl.light.position.z =
+                        cl.baseZ + Math.cos(globalTime * cl.speed * 0.7 + cl.phase) * cl.radius;
+                    cl.light.intensity =
+                        0.1 + Math.sin(globalTime * cl.speed * 2 + cl.phase) * 0.08;
+                }
+            });
+
+            // ── WebXR ──────────────────────────────────────────────────
+            try {
+                const xr = await WebXRDefaultExperience.CreateAsync(scene, {
+                    uiOptions: { sessionMode: "immersive-vr" },
+                    disableTeleportation: true,
+                });
+            } catch (e) {
+                console.warn("WebXR not available:", e);
+            }
+
+            // ── Render Loop + Resize ───────────────────────────────────
+            engine.runRenderLoop(() => {
+                scene.render();
+            });
+
+            window.addEventListener("resize", () => {
+                engine.resize();
+            });
+        </script>
+    </body>
+</html>

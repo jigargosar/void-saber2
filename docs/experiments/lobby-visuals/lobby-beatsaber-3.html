@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Lobby: Neon Tunnel</title>
+        <style>
+            * { margin: 0; padding: 0; }
+            canvas { width: 100vw; height: 100vh; display: block; }
+        </style>
+    </head>
+    <body>
+        <canvas id="canvas"></canvas>
+        <script type="module">
+            import { Engine } from '@babylonjs/core/Engines/engine'
+            import { Scene } from '@babylonjs/core/scene'
+            import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera'
+            import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight'
+            import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
+            import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
+            import { GlowLayer } from '@babylonjs/core/Layers/glowLayer'
+            import { Vector3, Color3, Color4 } from '@babylonjs/core/Maths/math'
+            import { WebXRDefaultExperience } from '@babylonjs/core/XR/webXRDefaultExperience'
+            import '@babylonjs/core/Helpers/sceneHelpers'
+
+            // ── Palette ──────────────────────────────────────────
+            const BLUE = Color3.FromHexString('#0088ff')
+            const MAGENTA = Color3.FromHexString('#ff00aa')
+            const CYAN = Color3.FromHexString('#00ccff')
+            const DIM_BLUE = Color3.FromHexString('#001133')
+
+            // ── Engine + Scene ───────────────────────────────────
+            const canvas = document.getElementById('canvas')
+            const engine = new Engine(canvas, true, { stencil: true })
+            const scene = new Scene(engine)
+            scene.clearColor = new Color4(0, 0, 0, 1)
+
+            // Fog — infinite tunnel depth
+            scene.fogMode = Scene.FOGMODE_EXP2
+            scene.fogDensity = 0.02
+            scene.fogColor = new Color3(0, 0, 0)
+
+            // ── Camera ───────────────────────────────────────────
+            const camera = new FreeCamera('cam', new Vector3(0, 1.6, 3), scene)
+            camera.setTarget(new Vector3(0, 1.6, 0))
+            camera.attachControl()
+            camera.minZ = 0.1
+
+            // ── Dim ambient ──────────────────────────────────────
+            const ambient = new HemisphericLight('ambient', new Vector3(0, 1, 0), scene)
+            ambient.intensity = 0.02
+            ambient.diffuse = DIM_BLUE
+            ambient.groundColor = new Color3(0, 0, 0)
+            ambient.specular = Color3.Black()
+
+            // ── Glow Layer ───────────────────────────────────────
+            const glow = new GlowLayer('glow', scene, {
+                mainTextureSamples: 4,
+                blurKernelSize: 64,
+            })
+            glow.intensity = 1.2
+
+            // ── Helper: neon beam ────────────────────────────────
+            function neonBeam(name, width, height, depth, pos, color) {
+                const beam = MeshBuilder.CreateBox(name, { width, height, depth }, scene)
+                beam.position = pos
+                const mat = new StandardMaterial(name + '_mat', scene)
+                mat.emissiveColor = color
+                mat.disableLighting = true
+                beam.material = mat
+                return beam
+            }
+
+            // ── Tunnel Ring Builder ──────────────────────────────
+            // Creates a rectangular ring outline from 4 thin beams
+            // Returns array of 4 meshes for animation access
+            const RING_W = 6          // inner width
+            const RING_H = 5          // inner height
+            const BEAM_THICK = 0.06   // cross-section of beams
+            const RING_COUNT = 30
+            const RING_SPACING = 3
+
+            const ringGroups = []
+
+            for (let i = 0; i < RING_COUNT; i++) {
+                const z = -i * RING_SPACING
+                const color = i % 2 === 0 ? BLUE : MAGENTA
+                const fade = Math.max(0.1, 1 - i / RING_COUNT)
+                const c = color.scale(fade)
+
+                const halfW = RING_W / 2
+                const halfH = RING_H / 2
+                const centerY = halfH
+
+                // Top beam (horizontal)
+                const top = neonBeam(`ring_top_${i}`,
+                    RING_W + BEAM_THICK, BEAM_THICK, BEAM_THICK,
+                    new Vector3(0, RING_H, z), c)
+
+                // Bottom beam (horizontal)
+                const bottom = neonBeam(`ring_bot_${i}`,
+                    RING_W + BEAM_THICK, BEAM_THICK, BEAM_THICK,
+                    new Vector3(0, 0, z), c)
+
+                // Left beam (vertical)
+                const left = neonBeam(`ring_left_${i}`,
+                    BEAM_THICK, RING_H, BEAM_THICK,
+                    new Vector3(-halfW, centerY, z), c)
+
+                // Right beam (vertical)
+                const right = neonBeam(`ring_right_${i}`,
+                    BEAM_THICK, RING_H, BEAM_THICK,
+                    new Vector3(halfW, centerY, z), c)
+
+                ringGroups.push({
+                    index: i,
+                    beams: [top, bottom, left, right],
+                    baseColor: color,
+                    fade,
+                })
+            }
+
+            // ── Floor ────────────────────────────────────────────
+            const FLOOR_W = RING_W
+            const FLOOR_D = RING_COUNT * RING_SPACING + 10
+
+            const floor = MeshBuilder.CreateBox('floor', {
+                width: FLOOR_W, height: 0.02, depth: FLOOR_D,
+            }, scene)
+            floor.position = new Vector3(0, -0.01, -FLOOR_D / 2 + 5)
+
+            const floorMat = new StandardMaterial('floorMat', scene)
+            floorMat.diffuseColor = new Color3(0.015, 0.015, 0.02)
+            floorMat.specularColor = BLUE.scale(0.08)
+            floorMat.specularPower = 256
+            floor.material = floorMat
+
+            // ── Center neon strip on floor ───────────────────────
+            const STRIP_H = 0.015
+            neonBeam('centerStrip',
+                0.04, STRIP_H, FLOOR_D,
+                new Vector3(0, STRIP_H / 2, floor.position.z),
+                CYAN.scale(0.5))
+
+            // ── Side accent strips on floor ──────────────────────
+            const sideStripColor = BLUE.scale(0.15)
+            neonBeam('sideStripL',
+                0.02, STRIP_H, FLOOR_D,
+                new Vector3(-RING_W / 2, STRIP_H / 2, floor.position.z),
+                sideStripColor)
+            neonBeam('sideStripR',
+                0.02, STRIP_H, FLOOR_D,
+                new Vector3(RING_W / 2, STRIP_H / 2, floor.position.z),
+                sideStripColor)
+
+            // ── Floor cross-hatches ──────────────────────────────
+            // Subtle neon lines on the floor at each ring position
+            for (let i = 0; i < RING_COUNT; i++) {
+                const z = -i * RING_SPACING
+                const fade = Math.max(0.05, 1 - i / RING_COUNT)
+                const color = (i % 2 === 0 ? BLUE : MAGENTA).scale(fade * 0.12)
+
+                neonBeam(`floorLine_${i}`,
+                    RING_W * 0.8, STRIP_H, 0.02,
+                    new Vector3(0, STRIP_H / 2, z),
+                    color)
+            }
+
+            // ── Ceiling accent beams ─────────────────────────────
+            // Thin neon lines running along the top corners of the tunnel
+            const ceilingZ = floor.position.z
+            neonBeam('ceilStripL',
+                0.02, 0.02, FLOOR_D,
+                new Vector3(-RING_W / 2, RING_H, ceilingZ),
+                MAGENTA.scale(0.1))
+            neonBeam('ceilStripR',
+                0.02, 0.02, FLOOR_D,
+                new Vector3(RING_W / 2, RING_H, ceilingZ),
+                BLUE.scale(0.1))
+
+            // ── Distant vanishing point accent ───────────────────
+            // A faint torus at the far end to draw the eye
+            const vanishRing = MeshBuilder.CreateTorus('vanishRing', {
+                diameter: 3.5,
+                thickness: 0.05,
+                tessellation: 48,
+            }, scene)
+            vanishRing.position = new Vector3(0, RING_H / 2, -RING_COUNT * RING_SPACING)
+            vanishRing.rotation.x = Math.PI / 2
+            const vanishMat = new StandardMaterial('vanishMat', scene)
+            vanishMat.emissiveColor = CYAN.scale(0.15)
+            vanishMat.disableLighting = true
+            vanishRing.material = vanishMat
+
+            // ── Animation: wave pulse ────────────────────────────
+            // Rings pulse in a wave pattern from front to back
+            const WAVE_SPEED = 2.5     // how fast the wave travels
+            const PULSE_AMPLITUDE = 0.6 // how much brighter the pulse makes rings
+            const BASE_BRIGHTNESS = 0.4 // minimum brightness multiplier
+
+            let time = 0
+
+            scene.registerBeforeRender(() => {
+                const dt = engine.getDeltaTime() / 1000
+                time += dt
+
+                for (const group of ringGroups) {
+                    // Wave: sin wave traveling from front (i=0) to back
+                    const phase = time * WAVE_SPEED - group.index * 0.4
+                    const pulse = Math.sin(phase)
+                    // Map sin [-1,1] to brightness [BASE, BASE + AMPLITUDE]
+                    const brightness = BASE_BRIGHTNESS + (pulse * 0.5 + 0.5) * PULSE_AMPLITUDE
+                    const color = group.baseColor.scale(group.fade * brightness)
+
+                    for (const beam of group.beams) {
+                        const mat = beam.material
+                        mat.emissiveColor = color
+                    }
+                }
+
+                // Vanishing ring slow rotation
+                vanishRing.rotation.z += 0.15 * dt
+            })
+
+            // ── WebXR ────────────────────────────────────────────
+            await WebXRDefaultExperience.CreateAsync(scene, {
+                uiOptions: { sessionMode: 'immersive-vr' },
+                disableTeleportation: true,
+            }).catch(console.error)
+
+            // ── Run ──────────────────────────────────────────────
+            engine.runRenderLoop(() => scene.render())
+            window.addEventListener('resize', () => engine.resize())
+        </script>
+    </body>
+</html>

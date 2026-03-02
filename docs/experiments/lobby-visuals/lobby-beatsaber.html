@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Lobby: Beat Saber Style</title>
+        <style>
+            * { margin: 0; padding: 0; }
+            canvas { width: 100vw; height: 100vh; display: block; }
+        </style>
+    </head>
+    <body>
+        <canvas id="canvas"></canvas>
+        <script type="module">
+            import { Engine } from '@babylonjs/core/Engines/engine'
+            import { Scene } from '@babylonjs/core/scene'
+            import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera'
+            import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight'
+            import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
+            import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
+            import { GlowLayer } from '@babylonjs/core/Layers/glowLayer'
+            import { Vector3, Color3, Color4 } from '@babylonjs/core/Maths/math'
+            import { WebXRDefaultExperience } from '@babylonjs/core/XR/webXRDefaultExperience'
+            import '@babylonjs/core/Helpers/sceneHelpers'
+
+            // ── Palette ──────────────────────────────────────────
+            const BLUE = Color3.FromHexString('#0088ff')
+            const RED = Color3.FromHexString('#ff2244')
+            const CYAN = Color3.FromHexString('#00ccff')
+            const WHITE = Color3.FromHexString('#ffffff')
+            const DIM_BLUE = Color3.FromHexString('#001133')
+
+            // ── Engine + Scene ───────────────────────────────────
+            const canvas = document.getElementById('canvas')
+            const engine = new Engine(canvas, true, { stencil: true })
+            const scene = new Scene(engine)
+            scene.clearColor = new Color4(0, 0, 0, 1)
+
+            // Fog — swallows the far end of the lane
+            scene.fogMode = Scene.FOGMODE_EXP2
+            scene.fogDensity = 0.025
+            scene.fogColor = new Color3(0, 0, 0)
+
+            // ── Camera ───────────────────────────────────────────
+            const camera = new FreeCamera('cam', new Vector3(0, 1.6, 3), scene)
+            camera.setTarget(new Vector3(0, 1.6, 0))
+            camera.attachControl()
+            camera.minZ = 0.1
+
+            // ── Dim ambient ──────────────────────────────────────
+            const ambient = new HemisphericLight('ambient', new Vector3(0, 1, 0), scene)
+            ambient.intensity = 0.03
+            ambient.diffuse = DIM_BLUE
+            ambient.groundColor = new Color3(0, 0, 0)
+            ambient.specular = Color3.Black()
+
+            // ── Glow Layer ───────────────────────────────────────
+            const glow = new GlowLayer('glow', scene, {
+                mainTextureSamples: 4,
+                blurKernelSize: 64,
+            })
+            glow.intensity = 1.2
+
+            // ── Helper: neon strip ───────────────────────────────
+            function neonStrip(name, width, height, depth, pos, color) {
+                const strip = MeshBuilder.CreateBox(name, { width, height, depth }, scene)
+                strip.position = pos
+                const mat = new StandardMaterial(name + '_mat', scene)
+                mat.emissiveColor = color
+                mat.disableLighting = true
+                strip.material = mat
+                return strip
+            }
+
+            // ── Platform ─────────────────────────────────────────
+            // Dark floor with neon edge strips
+            const PLATFORM_W = 4
+            const PLATFORM_D = 80
+            const STRIP_THICKNESS = 0.03
+            const STRIP_HEIGHT = 0.02
+
+            const floor = MeshBuilder.CreateBox('floor', {
+                width: PLATFORM_W, height: 0.05, depth: PLATFORM_D,
+            }, scene)
+            floor.position = new Vector3(0, -0.025, -PLATFORM_D / 2 + 5)
+            const floorMat = new StandardMaterial('floorMat', scene)
+            floorMat.diffuseColor = new Color3(0.02, 0.02, 0.03)
+            floorMat.specularColor = BLUE.scale(0.05)
+            floorMat.specularPower = 128
+            floor.material = floorMat
+
+            // Side edge strips — blue neon
+            const halfW = PLATFORM_W / 2
+            const floorZ = floor.position.z
+            neonStrip('edgeL', STRIP_THICKNESS, STRIP_HEIGHT, PLATFORM_D,
+                new Vector3(-halfW, 0.01, floorZ), BLUE)
+            neonStrip('edgeR', STRIP_THICKNESS, STRIP_HEIGHT, PLATFORM_D,
+                new Vector3(halfW, 0.01, floorZ), BLUE)
+
+            // Center line — dimmer
+            neonStrip('centerLine', STRIP_THICKNESS * 0.5, STRIP_HEIGHT, PLATFORM_D,
+                new Vector3(0, 0.01, floorZ), BLUE.scale(0.3))
+
+            // ── Lane chevrons ────────────────────────────────────
+            // V-shaped neon marks receding down the lane
+            const CHEVRON_COUNT = 20
+            const CHEVRON_SPACING = 3.5
+            const CHEVRON_HALF_W = 1.5
+            const CHEVRON_DEPTH = 0.08
+
+            for (let i = 0; i < CHEVRON_COUNT; i++) {
+                const z = -i * CHEVRON_SPACING
+                const fade = Math.max(0.15, 1 - i / CHEVRON_COUNT)
+                const color = BLUE.scale(fade * 0.6)
+
+                // Left arm of chevron
+                const armL = MeshBuilder.CreateBox(`chevL_${i}`, {
+                    width: CHEVRON_HALF_W * 1.2, height: STRIP_HEIGHT, depth: CHEVRON_DEPTH,
+                }, scene)
+                armL.position = new Vector3(-CHEVRON_HALF_W / 2, 0.008, z)
+                armL.rotation.y = 0.4
+                const matL = new StandardMaterial(`chevL_mat_${i}`, scene)
+                matL.emissiveColor = color
+                matL.disableLighting = true
+                armL.material = matL
+
+                // Right arm of chevron
+                const armR = MeshBuilder.CreateBox(`chevR_${i}`, {
+                    width: CHEVRON_HALF_W * 1.2, height: STRIP_HEIGHT, depth: CHEVRON_DEPTH,
+                }, scene)
+                armR.position = new Vector3(CHEVRON_HALF_W / 2, 0.008, z)
+                armR.rotation.y = -0.4
+                const matR = new StandardMaterial(`chevR_mat_${i}`, scene)
+                matR.emissiveColor = color
+                matR.disableLighting = true
+                armR.material = matR
+            }
+
+            // ── Side pillars ─────────────────────────────────────
+            // Tall thin neon beams flanking the lane
+            const PILLAR_COUNT = 12
+            const PILLAR_SPACING = 5
+            const PILLAR_HEIGHT = 8
+            const PILLAR_OFFSET_X = 3.5
+
+            for (let i = 0; i < PILLAR_COUNT; i++) {
+                const z = -i * PILLAR_SPACING
+                const fade = Math.max(0.1, 1 - i / PILLAR_COUNT)
+
+                for (const side of [-1, 1]) {
+                    const pillar = MeshBuilder.CreateBox(`pillar_${side}_${i}`, {
+                        width: 0.06, height: PILLAR_HEIGHT, depth: 0.06,
+                    }, scene)
+                    pillar.position = new Vector3(
+                        side * PILLAR_OFFSET_X,
+                        PILLAR_HEIGHT / 2,
+                        z,
+                    )
+                    const mat = new StandardMaterial(`pillar_mat_${side}_${i}`, scene)
+                    mat.emissiveColor = (side === -1 ? RED : BLUE).scale(fade * 0.5)
+                    mat.disableLighting = true
+                    pillar.material = mat
+
+                    // Horizontal crossbar at top
+                    if (i % 2 === 0) {
+                        const bar = MeshBuilder.CreateBox(`bar_${side}_${i}`, {
+                            width: 1.2, height: 0.04, depth: 0.04,
+                        }, scene)
+                        bar.position = new Vector3(
+                            side * (PILLAR_OFFSET_X - 0.6),
+                            PILLAR_HEIGHT,
+                            z,
+                        )
+                        const barMat = new StandardMaterial(`bar_mat_${side}_${i}`, scene)
+                        barMat.emissiveColor = (side === -1 ? RED : BLUE).scale(fade * 0.3)
+                        barMat.disableLighting = true
+                        bar.material = barMat
+                    }
+                }
+            }
+
+            // ── Floating side panels ─────────────────────────────
+            // Large dark panels behind the pillars — gives depth and enclosure
+            for (const side of [-1, 1]) {
+                const panel = MeshBuilder.CreateBox(`panel_${side}`, {
+                    width: 0.1, height: 6, depth: PLATFORM_D,
+                }, scene)
+                panel.position = new Vector3(side * 5.5, 3, floorZ)
+                const panelMat = new StandardMaterial(`panel_mat_${side}`, scene)
+                panelMat.diffuseColor = new Color3(0.015, 0.015, 0.02)
+                panelMat.specularColor = Color3.Black()
+                panelMat.emissiveColor = DIM_BLUE.scale(0.1)
+                panel.material = panelMat
+
+                // Neon accent strip on panel face
+                neonStrip(`panelStrip_${side}`, 0.02, 0.02, PLATFORM_D,
+                    new Vector3(side * 5.45, 4.5, floorZ),
+                    (side === -1 ? RED : BLUE).scale(0.25))
+            }
+
+            // ── Overhead bar ─────────────────────────────────────
+            // Faint neon frame overhead
+            neonStrip('topBar', PLATFORM_W + 2, 0.03, 0.03,
+                new Vector3(0, PILLAR_HEIGHT + 0.5, 0), CYAN.scale(0.2))
+
+            // ── Ring accents ─────────────────────────────────────
+            // A few neon rings floating in the distance
+            const RING_POSITIONS = [
+                { z: -15, y: 4, r: 2.5, color: BLUE, alpha: 0.4 },
+                { z: -30, y: 3.5, r: 3, color: RED, alpha: 0.3 },
+                { z: -45, y: 5, r: 2, color: CYAN, alpha: 0.2 },
+                { z: -55, y: 4, r: 3.5, color: BLUE, alpha: 0.15 },
+            ]
+
+            const rings = RING_POSITIONS.map((r, i) => {
+                const ring = MeshBuilder.CreateTorus(`ring_${i}`, {
+                    diameter: r.r * 2,
+                    thickness: 0.04,
+                    tessellation: 48,
+                }, scene)
+                ring.position = new Vector3(0, r.y, r.z)
+                ring.rotation.x = Math.PI / 2
+                const mat = new StandardMaterial(`ring_mat_${i}`, scene)
+                mat.emissiveColor = r.color.scale(r.alpha)
+                mat.disableLighting = true
+                ring.material = mat
+                return ring
+            })
+
+            // ── Animation ────────────────────────────────────────
+            let time = 0
+
+            scene.registerBeforeRender(() => {
+                const dt = engine.getDeltaTime() / 1000
+                time += dt
+
+                // Subtle ring rotation
+                for (let i = 0; i < rings.length; i++) {
+                    rings[i].rotation.z += (0.1 + i * 0.05) * dt
+                }
+            })
+
+            // ── WebXR ────────────────────────────────────────────
+            await WebXRDefaultExperience.CreateAsync(scene, {
+                uiOptions: { sessionMode: 'immersive-vr' },
+                disableTeleportation: true,
+            }).catch(console.error)
+
+            // ── Run ──────────────────────────────────────────────
+            engine.runRenderLoop(() => scene.render())
+            window.addEventListener('resize', () => engine.resize())
+        </script>
+    </body>
+</html>

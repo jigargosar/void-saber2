@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Lobby: Floating Platforms</title>
+        <style>
+            * { margin: 0; padding: 0; }
+            canvas { width: 100vw; height: 100vh; display: block; }
+        </style>
+    </head>
+    <body>
+        <canvas id="canvas"></canvas>
+        <script type="module">
+            import { Engine } from '@babylonjs/core/Engines/engine'
+            import { Scene } from '@babylonjs/core/scene'
+            import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera'
+            import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight'
+            import { PointLight } from '@babylonjs/core/Lights/pointLight'
+            import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
+            import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
+            import { GlowLayer } from '@babylonjs/core/Layers/glowLayer'
+            import { Vector3, Color3, Color4 } from '@babylonjs/core/Maths/math'
+            import { WebXRDefaultExperience } from '@babylonjs/core/XR/webXRDefaultExperience'
+            import '@babylonjs/core/Helpers/sceneHelpers'
+
+            // ── Palette ──────────────────────────────────────────
+            const BLUE = Color3.FromHexString('#0088ff')
+            const RED = Color3.FromHexString('#ff2244')
+            const PURPLE = Color3.FromHexString('#6600ff')
+            const CYAN = Color3.FromHexString('#00ccff')
+            const DARK_SURFACE = new Color3(0.02, 0.02, 0.03)
+
+            // ── Engine + Scene ───────────────────────────────────
+            const canvas = document.getElementById('canvas')
+            const engine = new Engine(canvas, true, { stencil: true })
+            const scene = new Scene(engine)
+            scene.clearColor = new Color4(0, 0, 0, 1)
+
+            // Fog
+            scene.fogMode = Scene.FOGMODE_EXP2
+            scene.fogDensity = 0.01
+            scene.fogColor = new Color3(0, 0, 0)
+
+            // ── Camera ───────────────────────────────────────────
+            const camera = new FreeCamera('cam', new Vector3(0, 1.6, 3), scene)
+            camera.setTarget(new Vector3(0, 1.6, 0))
+            camera.attachControl()
+            camera.minZ = 0.1
+
+            // ── Dim ambient ──────────────────────────────────────
+            const ambient = new HemisphericLight('ambient', new Vector3(0, 1, 0), scene)
+            ambient.intensity = 0.02
+            ambient.diffuse = new Color3(0.01, 0.01, 0.03)
+            ambient.groundColor = new Color3(0, 0, 0)
+            ambient.specular = Color3.Black()
+
+            // ── Glow Layer ───────────────────────────────────────
+            const glow = new GlowLayer('glow', scene, {
+                mainTextureSamples: 4,
+                blurKernelSize: 64,
+            })
+            glow.intensity = 1.2
+
+            // ── Helpers ──────────────────────────────────────────
+
+            function neonStrip(name, width, height, depth, pos, color) {
+                const strip = MeshBuilder.CreateBox(name, { width, height, depth }, scene)
+                strip.position = pos
+                const mat = new StandardMaterial(name + '_mat', scene)
+                mat.emissiveColor = color
+                mat.disableLighting = true
+                strip.material = mat
+                strip.isPickable = false
+                return strip
+            }
+
+            function darkPlatform(name, width, depth, pos) {
+                const box = MeshBuilder.CreateBox(name, {
+                    width, height: 0.08, depth,
+                }, scene)
+                box.position = pos
+                const mat = new StandardMaterial(name + '_mat', scene)
+                mat.diffuseColor = DARK_SURFACE
+                mat.specularColor = BLUE.scale(0.03)
+                mat.specularPower = 128
+                box.material = mat
+                box.isPickable = false
+                return box
+            }
+
+            function platformEdges(name, width, depth, pos, color) {
+                const edgeH = 0.025
+                const edgeT = 0.025
+                const halfW = width / 2
+                const halfD = depth / 2
+                const y = pos.y + 0.02
+
+                // Four edges
+                neonStrip(name + '_eL', edgeT, edgeH, depth,
+                    new Vector3(pos.x - halfW, y, pos.z), color)
+                neonStrip(name + '_eR', edgeT, edgeH, depth,
+                    new Vector3(pos.x + halfW, y, pos.z), color)
+                neonStrip(name + '_eF', width, edgeH, edgeT,
+                    new Vector3(pos.x, y, pos.z - halfD), color)
+                neonStrip(name + '_eB', width, edgeH, edgeT,
+                    new Vector3(pos.x, y, pos.z + halfD), color)
+            }
+
+            // ── Main Platform ────────────────────────────────────
+            // Player stands on this one
+            const MAIN_W = 4
+            const MAIN_D = 4
+            const MAIN_POS = new Vector3(0, 0, 0)
+
+            darkPlatform('mainPlat', MAIN_W, MAIN_D, MAIN_POS)
+            platformEdges('mainPlat', MAIN_W, MAIN_D, MAIN_POS, BLUE)
+
+            // Cross accent on main platform surface
+            neonStrip('mainCrossX', MAIN_W * 0.6, 0.015, 0.02,
+                new Vector3(0, 0.05, 0), BLUE.scale(0.25))
+            neonStrip('mainCrossZ', 0.02, 0.015, MAIN_D * 0.6,
+                new Vector3(0, 0.05, 0), BLUE.scale(0.25))
+
+            // ── Floating Platforms ───────────────────────────────
+            // Each: { x, y, z, w, d, color, bobSpeed, bobPhase }
+            const PLATFORMS = [
+                // Near platforms — slightly below or at level
+                { x: -3.5, y: -0.8, z: -2,   w: 2.0, d: 2.0, color: BLUE,   bobSpeed: 0.4, bobPhase: 0 },
+                { x:  4.0, y: -1.2, z: -1,   w: 1.8, d: 1.5, color: BLUE,   bobSpeed: 0.35, bobPhase: 1.2 },
+                { x:  2.5, y: -2.0, z: -4,   w: 1.5, d: 1.5, color: PURPLE, bobSpeed: 0.5, bobPhase: 2.5 },
+                { x: -2.0, y: -1.5, z: -5,   w: 2.2, d: 1.8, color: PURPLE, bobSpeed: 0.3, bobPhase: 0.8 },
+
+                // Further out platforms — lower
+                { x: -5.0, y: -3.0, z: -6,   w: 1.2, d: 1.2, color: BLUE,   bobSpeed: 0.45, bobPhase: 3.1 },
+                { x:  5.5, y: -2.5, z: -5.5, w: 1.4, d: 1.0, color: PURPLE, bobSpeed: 0.38, bobPhase: 4.0 },
+                { x:  0.5, y: -3.5, z: -8,   w: 1.8, d: 1.6, color: BLUE,   bobSpeed: 0.42, bobPhase: 1.7 },
+                { x: -4.5, y: -4.0, z: -9,   w: 1.0, d: 1.0, color: PURPLE, bobSpeed: 0.55, bobPhase: 5.2 },
+
+                // Higher platforms — above player
+                { x: -3.0, y:  1.5, z: -3,   w: 1.0, d: 1.0, color: BLUE,   bobSpeed: 0.32, bobPhase: 2.0 },
+                { x:  3.5, y:  2.0, z: -4.5, w: 1.2, d: 0.8, color: PURPLE, bobSpeed: 0.48, bobPhase: 3.7 },
+
+                // Behind player
+                { x: -2.5, y: -1.0, z:  3.5, w: 1.6, d: 1.4, color: BLUE,   bobSpeed: 0.36, bobPhase: 0.5 },
+                { x:  3.0, y: -2.0, z:  4.0, w: 1.3, d: 1.3, color: PURPLE, bobSpeed: 0.44, bobPhase: 2.8 },
+            ]
+
+            const platformMeshes = PLATFORMS.map((p, i) => {
+                const pos = new Vector3(p.x, p.y, p.z)
+                darkPlatform(`plat_${i}`, p.w, p.d, pos)
+                platformEdges(`plat_${i}`, p.w, p.d, pos, p.color)
+                return { baseY: p.y, bobSpeed: p.bobSpeed, bobPhase: p.bobPhase, x: p.x, z: p.z, w: p.w, d: p.d, index: i }
+            })
+
+            // ── Energy Conduits (vertical neon lines connecting platforms) ──
+            const CONDUITS = [
+                // from main platform down to nearby lower platforms
+                { x: -1.8, z: -1.8, topY: 0,    bottomY: -0.8,  color: BLUE },
+                { x:  1.8, z: -1.5, topY: 0,    bottomY: -1.2,  color: BLUE },
+                { x: -3.5, z: -2,   topY: -0.8, bottomY: -3.0,  color: PURPLE },
+                { x:  4.0, z: -1,   topY: -1.2, bottomY: -2.5,  color: PURPLE },
+
+                // Between floating platforms
+                { x:  2.5, z: -4,   topY: -2.0, bottomY: -3.5,  color: BLUE },
+                { x: -2.0, z: -5,   topY: -1.5, bottomY: -4.0,  color: PURPLE },
+                { x: -5.0, z: -6,   topY: -3.0, bottomY: -4.5,  color: BLUE },
+                { x:  5.5, z: -5.5, topY: -2.5, bottomY: -4.0,  color: PURPLE },
+
+                // Up to high platforms
+                { x: -3.0, z: -3,   topY: 1.5,  bottomY: -0.8,  color: BLUE },
+                { x:  3.5, z: -4.5, topY: 2.0,  bottomY: -1.2,  color: PURPLE },
+
+                // Behind player
+                { x: -2.5, z:  3.5, topY: 0,    bottomY: -1.0,  color: BLUE },
+                { x:  3.0, z:  4.0, topY: 0,    bottomY: -2.0,  color: PURPLE },
+            ]
+
+            CONDUITS.forEach((c, i) => {
+                const height = c.topY - c.bottomY
+                const midY = (c.topY + c.bottomY) / 2
+                neonStrip(`conduit_${i}`, 0.02, height, 0.02,
+                    new Vector3(c.x, midY, c.z), c.color.scale(0.5))
+            })
+
+            // ── Beat Saber Cubes on Platforms ────────────────────
+            // Small glowing cubes sitting on select platforms
+            const CUBES = [
+                { platIdx: 0, offsetX:  0.3, offsetZ: 0.2, color: RED },
+                { platIdx: 0, offsetX: -0.4, offsetZ: -0.3, color: BLUE },
+                { platIdx: 2, offsetX:  0.1, offsetZ: 0.1, color: RED },
+                { platIdx: 3, offsetX: -0.2, offsetZ: 0.3, color: BLUE },
+                { platIdx: 4, offsetX:  0,   offsetZ: 0,   color: RED },
+                { platIdx: 6, offsetX:  0.3, offsetZ: -0.2, color: BLUE },
+                { platIdx: 7, offsetX:  0,   offsetZ: 0,   color: RED },
+                { platIdx: 8, offsetX:  0,   offsetZ: 0,   color: BLUE },
+                { platIdx: 9, offsetX:  0,   offsetZ: 0,   color: RED },
+                { platIdx: 11, offsetX: 0.2, offsetZ: 0,   color: BLUE },
+            ]
+
+            const CUBE_SIZE = 0.2
+
+            const cubeMeshes = CUBES.map((c, i) => {
+                const plat = PLATFORMS[c.platIdx]
+                const cube = MeshBuilder.CreateBox(`cube_${i}`, {
+                    size: CUBE_SIZE,
+                }, scene)
+                cube.position = new Vector3(
+                    plat.x + c.offsetX,
+                    plat.y + 0.04 + CUBE_SIZE / 2,
+                    plat.z + c.offsetZ,
+                )
+                // Slight rotation for visual interest
+                cube.rotation.y = (i * 0.7) % (Math.PI * 2)
+
+                const mat = new StandardMaterial(`cube_mat_${i}`, scene)
+                mat.emissiveColor = c.color
+                mat.disableLighting = true
+                cube.material = mat
+                cube.isPickable = false
+
+                return {
+                    mesh: cube,
+                    platIdx: c.platIdx,
+                    offsetX: c.offsetX,
+                    offsetZ: c.offsetZ,
+                    baseLocalY: 0.04 + CUBE_SIZE / 2,
+                }
+            })
+
+            // Arrow indicators on cubes (thin strips to suggest directionality)
+            cubeMeshes.forEach((c, i) => {
+                const arrowColor = c.mesh.material.emissiveColor.scale(1.5)
+                const arrow = MeshBuilder.CreateBox(`arrow_${i}`, {
+                    width: CUBE_SIZE * 0.6, height: 0.01, depth: CUBE_SIZE * 0.15,
+                }, scene)
+                arrow.parent = c.mesh
+                arrow.position = new Vector3(0, CUBE_SIZE / 2 + 0.006, 0)
+                const arrowMat = new StandardMaterial(`arrow_mat_${i}`, scene)
+                arrowMat.emissiveColor = arrowColor
+                arrowMat.disableLighting = true
+                arrow.material = arrowMat
+            })
+
+            // ── Subtle point lights near some cubes for local glow ──
+            const cubeLight1 = new PointLight('cubeLight1', new Vector3(
+                PLATFORMS[0].x, PLATFORMS[0].y + 0.5, PLATFORMS[0].z,
+            ), scene)
+            cubeLight1.diffuse = RED.scale(0.4)
+            cubeLight1.intensity = 0.3
+            cubeLight1.range = 3
+
+            const cubeLight2 = new PointLight('cubeLight2', new Vector3(
+                PLATFORMS[3].x, PLATFORMS[3].y + 0.5, PLATFORMS[3].z,
+            ), scene)
+            cubeLight2.diffuse = BLUE.scale(0.4)
+            cubeLight2.intensity = 0.3
+            cubeLight2.range = 3
+
+            // ── Distant Neon Outlines ────────────────────────────
+            // Faint geometric shapes in the far distance for depth
+
+            // Large distant ring
+            const distantRing = MeshBuilder.CreateTorus('distantRing', {
+                diameter: 16,
+                thickness: 0.04,
+                tessellation: 64,
+            }, scene)
+            distantRing.position = new Vector3(0, 2, -20)
+            distantRing.rotation.x = Math.PI / 2
+            const distRingMat = new StandardMaterial('distRingMat', scene)
+            distRingMat.emissiveColor = PURPLE.scale(0.2)
+            distRingMat.disableLighting = true
+            distantRing.material = distRingMat
+            distantRing.isPickable = false
+
+            // Second ring at different angle
+            const distantRing2 = MeshBuilder.CreateTorus('distantRing2', {
+                diameter: 12,
+                thickness: 0.03,
+                tessellation: 48,
+            }, scene)
+            distantRing2.position = new Vector3(-8, 5, -18)
+            distantRing2.rotation.x = 0.5
+            distantRing2.rotation.z = 0.3
+            const distRingMat2 = new StandardMaterial('distRingMat2', scene)
+            distRingMat2.emissiveColor = BLUE.scale(0.15)
+            distRingMat2.disableLighting = true
+            distantRing2.material = distRingMat2
+            distantRing2.isPickable = false
+
+            // Third ring behind player
+            const distantRing3 = MeshBuilder.CreateTorus('distantRing3', {
+                diameter: 10,
+                thickness: 0.03,
+                tessellation: 48,
+            }, scene)
+            distantRing3.position = new Vector3(6, 3, 15)
+            distantRing3.rotation.x = 0.8
+            distantRing3.rotation.z = -0.4
+            const distRingMat3 = new StandardMaterial('distRingMat3', scene)
+            distRingMat3.emissiveColor = PURPLE.scale(0.12)
+            distRingMat3.disableLighting = true
+            distantRing3.material = distRingMat3
+            distantRing3.isPickable = false
+
+            // ── Vertical Accent Lines (tall thin pillars at edges) ──
+            const ACCENT_LINES = [
+                { x: -6,  z: -3,  h: 12, color: BLUE,   alpha: 0.3 },
+                { x:  6,  z: -4,  h: 10, color: RED,    alpha: 0.25 },
+                { x: -4,  z: -10, h: 8,  color: PURPLE, alpha: 0.2 },
+                { x:  5,  z: -9,  h: 9,  color: PURPLE, alpha: 0.2 },
+                { x: -7,  z:  2,  h: 7,  color: BLUE,   alpha: 0.15 },
+                { x:  7,  z:  3,  h: 8,  color: RED,    alpha: 0.15 },
+            ]
+
+            ACCENT_LINES.forEach((line, i) => {
+                neonStrip(`accentLine_${i}`, 0.03, line.h, 0.03,
+                    new Vector3(line.x, line.h / 2 - 2, line.z),
+                    line.color.scale(line.alpha))
+            })
+
+            // ── Horizontal Cross-Beams Between Accent Lines ──────
+            neonStrip('crossBeam1', 12, 0.02, 0.02,
+                new Vector3(0, 8, -3.5), BLUE.scale(0.12))
+            neonStrip('crossBeam2', 0.02, 0.02, 8,
+                new Vector3(-6, 6, -6.5), PURPLE.scale(0.1))
+            neonStrip('crossBeam3', 0.02, 0.02, 7,
+                new Vector3(6, 5, -6), PURPLE.scale(0.1))
+
+            // ── Animation ────────────────────────────────────────
+            let time = 0
+
+            scene.registerBeforeRender(() => {
+                const dt = engine.getDeltaTime() / 1000
+                time += dt
+
+                // Bob floating platforms
+                platformMeshes.forEach((p) => {
+                    const bobY = Math.sin(time * p.bobSpeed + p.bobPhase) * 0.15
+                    const newY = p.baseY + bobY
+
+                    // Move all meshes for this platform (body + 4 edges)
+                    const prefix = `plat_${p.index}`
+                    scene.getMeshByName(prefix).position.y = newY
+                    scene.getMeshByName(prefix + '_eL').position.y = newY + 0.02
+                    scene.getMeshByName(prefix + '_eR').position.y = newY + 0.02
+                    scene.getMeshByName(prefix + '_eF').position.y = newY + 0.02
+                    scene.getMeshByName(prefix + '_eB').position.y = newY + 0.02
+
+                    // Move cubes on this platform
+                    cubeMeshes.forEach((c) => {
+                        if (c.platIdx === p.index) {
+                            c.mesh.position.y = newY + c.baseLocalY
+                        }
+                    })
+                })
+
+                // Rotate cubes slowly
+                cubeMeshes.forEach((c) => {
+                    c.mesh.rotation.y += 0.3 * dt
+                })
+
+                // Slow ring rotation
+                distantRing.rotation.z += 0.05 * dt
+                distantRing2.rotation.z += 0.08 * dt
+                distantRing3.rotation.z -= 0.06 * dt
+
+                // Pulse conduit brightness subtly
+                // (done via glow intensity modulation)
+                glow.intensity = 1.2 + 0.15 * Math.sin(time * 0.6)
+            })
+
+            // ── WebXR ────────────────────────────────────────────
+            await WebXRDefaultExperience.CreateAsync(scene, {
+                uiOptions: { sessionMode: 'immersive-vr' },
+                disableTeleportation: true,
+            }).catch(console.error)
+
+            // ── Run ──────────────────────────────────────────────
+            engine.runRenderLoop(() => scene.render())
+            window.addEventListener('resize', () => engine.resize())
+        </script>
+    </body>
+</html>

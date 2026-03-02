@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Lobby: Hexagonal Arena</title>
+        <style>
+            * { margin: 0; padding: 0; }
+            canvas { width: 100vw; height: 100vh; display: block; }
+        </style>
+    </head>
+    <body>
+        <canvas id="canvas"></canvas>
+        <script type="module">
+            import { Engine } from '@babylonjs/core/Engines/engine'
+            import { Scene } from '@babylonjs/core/scene'
+            import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera'
+            import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight'
+            import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
+            import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
+            import { GlowLayer } from '@babylonjs/core/Layers/glowLayer'
+            import { Vector3, Color3, Color4 } from '@babylonjs/core/Maths/math'
+            import { WebXRDefaultExperience } from '@babylonjs/core/XR/webXRDefaultExperience'
+            import '@babylonjs/core/Helpers/sceneHelpers'
+
+            // ── Palette ──────────────────────────────────────────
+            const BLUE = Color3.FromHexString('#0088ff')
+            const CYAN = Color3.FromHexString('#00ccff')
+            const WHITE = Color3.FromHexString('#ffffff')
+            const DIM_BLUE = Color3.FromHexString('#001133')
+
+            // ── Engine + Scene ───────────────────────────────────
+            const canvas = document.getElementById('canvas')
+            const engine = new Engine(canvas, true, { stencil: true })
+            const scene = new Scene(engine)
+            scene.clearColor = new Color4(0, 0, 0, 1)
+
+            // ── Camera ───────────────────────────────────────────
+            const camera = new FreeCamera('cam', new Vector3(0, 1.6, 3), scene)
+            camera.setTarget(new Vector3(0, 1.6, 0))
+            camera.attachControl()
+            camera.minZ = 0.1
+
+            // ── Dim ambient ──────────────────────────────────────
+            const ambient = new HemisphericLight('ambient', new Vector3(0, 1, 0), scene)
+            ambient.intensity = 0.02
+            ambient.diffuse = DIM_BLUE
+            ambient.groundColor = new Color3(0, 0, 0)
+            ambient.specular = Color3.Black()
+
+            // ── Glow Layer ───────────────────────────────────────
+            const glow = new GlowLayer('glow', scene, {
+                mainTextureSamples: 4,
+                blurKernelSize: 64,
+            })
+            glow.intensity = 1.2
+
+            // ── Hex Geometry Helpers ─────────────────────────────
+
+            const TWO_PI = Math.PI * 2
+            const HEX_SIDES = 6
+
+            /** Returns the 6 corner positions of a flat-top hexagon at given radius and Y. */
+            function hexCorners(radius, y) {
+                const corners = []
+                for (let i = 0; i < HEX_SIDES; i++) {
+                    const angle = (TWO_PI * i) / HEX_SIDES
+                    corners.push(new Vector3(
+                        Math.cos(angle) * radius,
+                        y,
+                        Math.sin(angle) * radius,
+                    ))
+                }
+                return corners
+            }
+
+            /** Creates a single neon line segment (thin box) between two points. */
+            function neonEdge(name, from, to, thickness, color) {
+                const mid = Vector3.Center(from, to)
+                const len = Vector3.Distance(from, to)
+                const dir = to.subtract(from)
+                const angleY = Math.atan2(dir.x, dir.z)
+
+                const edge = MeshBuilder.CreateBox(name, {
+                    width: thickness,
+                    height: thickness,
+                    depth: len,
+                }, scene)
+                edge.position = mid
+                edge.rotation.y = angleY
+
+                const mat = new StandardMaterial(name + '_mat', scene)
+                mat.emissiveColor = color
+                mat.disableLighting = true
+                edge.material = mat
+                return edge
+            }
+
+            /** Creates a complete hexagonal ring of neon edges. */
+            function hexRing(baseName, radius, y, thickness, color) {
+                const corners = hexCorners(radius, y)
+                const edges = []
+                for (let i = 0; i < HEX_SIDES; i++) {
+                    const next = (i + 1) % HEX_SIDES
+                    const edge = neonEdge(
+                        `${baseName}_e${i}`,
+                        corners[i],
+                        corners[next],
+                        thickness,
+                        color,
+                    )
+                    edges.push(edge)
+                }
+                return edges
+            }
+
+            // ── Platform: Concentric Hexagonal Rings ─────────────
+            const RING_COUNT = 5
+            const RING_RADIUS_MIN = 1.0
+            const RING_RADIUS_MAX = 5.0
+            const RING_Y = 0.01
+            const RING_THICKNESS = 0.025
+
+            const platformRings = []
+
+            for (let i = 0; i < RING_COUNT; i++) {
+                const t = i / (RING_COUNT - 1)
+                const radius = RING_RADIUS_MIN + t * (RING_RADIUS_MAX - RING_RADIUS_MIN)
+
+                // Inner rings cyan, outer rings blue, with varying brightness
+                const brightness = 1.0 - t * 0.5
+                const color = Color3.Lerp(CYAN, BLUE, t).scale(brightness)
+
+                const edges = hexRing(`ring${i}`, radius, RING_Y, RING_THICKNESS, color)
+                platformRings.push({ edges, phase: t * Math.PI * 0.6 })
+            }
+
+            // ── Dark floor disc (subtle, under the hex rings) ────
+            const floorDisc = MeshBuilder.CreateDisc('floor', {
+                radius: RING_RADIUS_MAX + 0.3,
+                tessellation: 6,
+            }, scene)
+            floorDisc.rotation.x = Math.PI / 2
+            floorDisc.position.y = -0.005
+            const floorMat = new StandardMaterial('floorMat', scene)
+            floorMat.diffuseColor = new Color3(0.015, 0.015, 0.02)
+            floorMat.specularColor = BLUE.scale(0.03)
+            floorMat.specularPower = 128
+            floorDisc.material = floorMat
+
+            // ── Corner Columns ──────────────────────────────────
+            const COLUMN_HEIGHT = 7
+            const COLUMN_THICKNESS = 0.06
+            const COLUMN_RADIUS = RING_RADIUS_MAX + 0.2
+            const columnCorners = hexCorners(COLUMN_RADIUS, 0)
+
+            const columns = []
+            for (let i = 0; i < HEX_SIDES; i++) {
+                const corner = columnCorners[i]
+
+                // Main vertical column
+                const col = MeshBuilder.CreateBox(`col_${i}`, {
+                    width: COLUMN_THICKNESS,
+                    height: COLUMN_HEIGHT,
+                    depth: COLUMN_THICKNESS,
+                }, scene)
+                col.position = new Vector3(corner.x, COLUMN_HEIGHT / 2, corner.z)
+                const colMat = new StandardMaterial(`col_mat_${i}`, scene)
+                colMat.emissiveColor = BLUE.scale(0.4)
+                colMat.disableLighting = true
+                col.material = colMat
+                columns.push(col)
+
+                // Emissive edge accent strip on each column face
+                const accent = MeshBuilder.CreateBox(`col_accent_${i}`, {
+                    width: COLUMN_THICKNESS * 0.3,
+                    height: COLUMN_HEIGHT,
+                    depth: COLUMN_THICKNESS * 0.3,
+                }, scene)
+                accent.position = new Vector3(corner.x, COLUMN_HEIGHT / 2, corner.z)
+                const accentMat = new StandardMaterial(`col_accent_mat_${i}`, scene)
+                accentMat.emissiveColor = CYAN.scale(0.7)
+                accentMat.disableLighting = true
+                accent.material = accentMat
+
+                // Small cap at column top
+                const cap = MeshBuilder.CreateBox(`col_cap_${i}`, {
+                    width: COLUMN_THICKNESS * 3,
+                    height: COLUMN_THICKNESS,
+                    depth: COLUMN_THICKNESS * 3,
+                }, scene)
+                cap.position = new Vector3(corner.x, COLUMN_HEIGHT, corner.z)
+                const capMat = new StandardMaterial(`col_cap_mat_${i}`, scene)
+                capMat.emissiveColor = CYAN.scale(0.5)
+                capMat.disableLighting = true
+                cap.material = capMat
+            }
+
+            // Hex ring connecting column tops
+            hexRing('topRing', COLUMN_RADIUS, COLUMN_HEIGHT, 0.03, BLUE.scale(0.35))
+
+            // ── Floating Hexagonal Frames ────────────────────────
+            const FRAME_CONFIGS = [
+                { radius: 1.8, y: 3.5, thickness: 0.03, color: CYAN, brightness: 0.6, rotSpeed: 0.15 },
+                { radius: 2.5, y: 5.0, thickness: 0.025, color: BLUE, brightness: 0.5, rotSpeed: -0.1 },
+                { radius: 1.2, y: 6.5, thickness: 0.02, color: CYAN, brightness: 0.4, rotSpeed: 0.2 },
+                { radius: 3.0, y: 8.0, thickness: 0.02, color: BLUE, brightness: 0.3, rotSpeed: -0.08 },
+                { radius: 0.8, y: 4.0, thickness: 0.025, color: WHITE, brightness: 0.25, rotSpeed: 0.25 },
+                { radius: 2.0, y: 9.5, thickness: 0.015, color: CYAN, brightness: 0.2, rotSpeed: 0.12 },
+            ]
+
+            const floatingFrames = FRAME_CONFIGS.map((cfg, idx) => {
+                const edges = hexRing(
+                    `frame${idx}`,
+                    cfg.radius,
+                    cfg.y,
+                    cfg.thickness,
+                    cfg.color.scale(cfg.brightness),
+                )
+                return {
+                    edges,
+                    y: cfg.y,
+                    rotSpeed: cfg.rotSpeed,
+                    currentAngle: (TWO_PI * idx) / FRAME_CONFIGS.length,
+                    radius: cfg.radius,
+                }
+            })
+
+            // ── Radial spokes from center to corners (ground level) ──
+            const spokeCorners = hexCorners(RING_RADIUS_MAX, RING_Y)
+            const center = new Vector3(0, RING_Y, 0)
+            for (let i = 0; i < HEX_SIDES; i++) {
+                neonEdge(
+                    `spoke_${i}`,
+                    center,
+                    spokeCorners[i],
+                    0.012,
+                    BLUE.scale(0.2),
+                )
+            }
+
+            // ── Vertical accent lines from corners upward ────────
+            for (let i = 0; i < HEX_SIDES; i++) {
+                const corner = columnCorners[i]
+                // Thin vertical beam extending above columns into the void
+                const beam = MeshBuilder.CreateBox(`vbeam_${i}`, {
+                    width: 0.015,
+                    height: 4,
+                    depth: 0.015,
+                }, scene)
+                beam.position = new Vector3(corner.x, COLUMN_HEIGHT + 2, corner.z)
+                const beamMat = new StandardMaterial(`vbeam_mat_${i}`, scene)
+                beamMat.emissiveColor = CYAN.scale(0.15)
+                beamMat.disableLighting = true
+                beam.material = beamMat
+            }
+
+            // ── Small floating hex particles (decorative) ────────
+            const PARTICLE_COUNT = 12
+            const particles = []
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                const angle = (TWO_PI * i) / PARTICLE_COUNT + Math.random() * 0.3
+                const dist = 2 + Math.random() * 4
+                const y = 1.5 + Math.random() * 7
+                const size = 0.02 + Math.random() * 0.03
+
+                const particle = MeshBuilder.CreateBox(`particle_${i}`, {
+                    width: size,
+                    height: size,
+                    depth: size,
+                }, scene)
+                particle.position = new Vector3(
+                    Math.cos(angle) * dist,
+                    y,
+                    Math.sin(angle) * dist,
+                )
+                particle.rotation.y = Math.random() * TWO_PI
+                const pMat = new StandardMaterial(`particle_mat_${i}`, scene)
+                pMat.emissiveColor = (Math.random() > 0.5 ? CYAN : BLUE).scale(0.3 + Math.random() * 0.4)
+                pMat.disableLighting = true
+                particle.material = pMat
+
+                particles.push({
+                    mesh: particle,
+                    baseY: y,
+                    floatSpeed: 0.3 + Math.random() * 0.5,
+                    floatAmp: 0.1 + Math.random() * 0.2,
+                    phase: Math.random() * TWO_PI,
+                    orbitSpeed: (0.02 + Math.random() * 0.04) * (Math.random() > 0.5 ? 1 : -1),
+                    orbitAngle: angle,
+                    orbitDist: dist,
+                })
+            }
+
+            // ── Animation ────────────────────────────────────────
+            let time = 0
+
+            scene.registerBeforeRender(() => {
+                const dt = engine.getDeltaTime() / 1000
+                time += dt
+
+                // Pulse concentric hex rings at different phases
+                for (let i = 0; i < platformRings.length; i++) {
+                    const ring = platformRings[i]
+                    const pulse = 0.5 + 0.5 * Math.sin(time * 1.5 + ring.phase)
+                    const t = i / (RING_COUNT - 1)
+                    const baseColor = Color3.Lerp(CYAN, BLUE, t)
+                    const brightness = (0.4 + pulse * 0.6) * (1.0 - t * 0.4)
+
+                    for (const edge of ring.edges) {
+                        const mat = edge.material
+                        mat.emissiveColor = baseColor.scale(brightness)
+                    }
+                }
+
+                // Rotate floating hex frames around center
+                for (const frame of floatingFrames) {
+                    frame.currentAngle += frame.rotSpeed * dt
+
+                    // Reposition edges by rotating the entire hex frame
+                    const cos = Math.cos(frame.rotSpeed * dt)
+                    const sin = Math.sin(frame.rotSpeed * dt)
+
+                    for (const edge of frame.edges) {
+                        const x = edge.position.x
+                        const z = edge.position.z
+                        edge.position.x = x * cos - z * sin
+                        edge.position.z = x * sin + z * cos
+                        edge.rotation.y += frame.rotSpeed * dt
+                    }
+                }
+
+                // Pulse column accents
+                for (let i = 0; i < HEX_SIDES; i++) {
+                    const pulse = 0.3 + 0.7 * Math.sin(time * 1.2 + (i * TWO_PI) / HEX_SIDES)
+                    columns[i].material.emissiveColor = BLUE.scale(0.2 + pulse * 0.3)
+                }
+
+                // Float particles
+                for (const p of particles) {
+                    p.mesh.position.y = p.baseY + Math.sin(time * p.floatSpeed + p.phase) * p.floatAmp
+                    p.orbitAngle += p.orbitSpeed * dt
+                    p.mesh.position.x = Math.cos(p.orbitAngle) * p.orbitDist
+                    p.mesh.position.z = Math.sin(p.orbitAngle) * p.orbitDist
+                    p.mesh.rotation.y += dt * 0.5
+                }
+            })
+
+            // ── WebXR ────────────────────────────────────────────
+            await WebXRDefaultExperience.CreateAsync(scene, {
+                uiOptions: { sessionMode: 'immersive-vr' },
+                disableTeleportation: true,
+            }).catch(console.error)
+
+            // ── Run ──────────────────────────────────────────────
+            engine.runRenderLoop(() => scene.render())
+            window.addEventListener('resize', () => engine.resize())
+        </script>
+    </body>
+</html>

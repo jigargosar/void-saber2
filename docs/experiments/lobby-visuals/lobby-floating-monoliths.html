@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Lobby: Floating Monoliths</title>
+        <style>
+            * { margin: 0; padding: 0; }
+            canvas { width: 100vw; height: 100vh; display: block; }
+        </style>
+    </head>
+    <body>
+        <canvas id="canvas"></canvas>
+        <script type="module">
+            import { Engine } from '@babylonjs/core/Engines/engine'
+            import { Scene } from '@babylonjs/core/scene'
+            import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera'
+            import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight'
+            import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight'
+            import { PointLight } from '@babylonjs/core/Lights/pointLight'
+            import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
+            import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
+            import { Vector3, Color3, Color4 } from '@babylonjs/core/Maths/math'
+            import { Texture } from '@babylonjs/core/Materials/Textures/texture'
+            import { RawTexture } from '@babylonjs/core/Materials/Textures/rawTexture'
+            import { GlowLayer } from '@babylonjs/core/Layers/glowLayer'
+            import { ParticleSystem } from '@babylonjs/core/Particles/particleSystem'
+            import { WebXRDefaultExperience } from '@babylonjs/core/XR/webXRDefaultExperience'
+            import { VolumetricLightScatteringPostProcess } from '@babylonjs/core/PostProcesses/volumetricLightScatteringPostProcess'
+            import { DefaultRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline'
+            import '@babylonjs/core/Helpers/sceneHelpers'
+
+            // ── Color Palette ──────────────────────────────────────────
+            const DUSK_ORANGE = Color3.FromHexString('#e8651a')
+            const DEEP_NAVY = Color3.FromHexString('#0b1a3d')
+            const MATTE_CHARCOAL = Color3.FromHexString('#2a2a2a')
+            const SOFT_PEACH = Color3.FromHexString('#ffcba4')
+            const PALE_YELLOW = Color3.FromHexString('#fff4c1')
+
+            // ── Engine & Scene ─────────────────────────────────────────
+            const canvas = document.getElementById('canvas')
+            const engine = new Engine(canvas, true, { stencil: true })
+            const scene = new Scene(engine)
+
+            // Sky gradient: blend from deep navy (top) to dusk orange (bottom)
+            scene.clearColor = new Color4(0.043, 0.102, 0.239, 1) // deep navy base
+            scene.ambientColor = new Color3(0.15, 0.1, 0.08)
+
+            // Distance fog — progressive desaturation of far monoliths
+            scene.fogMode = Scene.FOGMODE_EXP2
+            scene.fogDensity = 0.008
+            scene.fogColor = new Color3(0.25, 0.15, 0.1) // warm hazy blend
+
+            // ── Camera ─────────────────────────────────────────────────
+            const camera = new FreeCamera('cam', new Vector3(0, 1.6, 3), scene)
+            camera.setTarget(new Vector3(0, 1.6, 0))
+            camera.attachControl()
+            camera.minZ = 0.1
+            camera.maxZ = 300
+
+            // ── Lighting ───────────────────────────────────────────────
+
+            // Hemisphere: warm below (orange ambient), cool above (navy)
+            const hemiLight = new HemisphericLight('hemi', new Vector3(0, 1, 0), scene)
+            hemiLight.intensity = 0.4
+            hemiLight.diffuse = SOFT_PEACH.scale(0.6)
+            hemiLight.groundColor = DUSK_ORANGE.scale(0.3)
+            hemiLight.specular = Color3.Black()
+
+            // Sunset directional — strong warm light from horizon
+            const sunDir = new Vector3(-0.5, -0.15, -0.85)
+            const sunLight = new DirectionalLight('sun', sunDir, scene)
+            sunLight.intensity = 2.5
+            sunLight.diffuse = SOFT_PEACH
+            sunLight.specular = PALE_YELLOW.scale(0.5)
+
+            // Fill light from above for platform
+            const fillLight = new PointLight('fill', new Vector3(0, 8, 0), scene)
+            fillLight.intensity = 1.2
+            fillLight.diffuse = PALE_YELLOW.scale(0.4)
+            fillLight.specular = Color3.Black()
+            fillLight.range = 20
+
+            // ── Glow Layer ─────────────────────────────────────────────
+            const glowLayer = new GlowLayer('glow', scene, {
+                mainTextureSamples: 4,
+                blurKernelSize: 64,
+            })
+            glowLayer.intensity = 0.6
+
+            // ── Sky Gradient Backdrop ──────────────────────────────────
+            // Large inverted sphere with gradient emissive to simulate sky
+            const skyDome = MeshBuilder.CreateSphere('sky', { diameter: 500, segments: 32 }, scene)
+            skyDome.scaling = new Vector3(-1, 1, 1) // invert normals
+            const skyMat = new StandardMaterial('skyMat', scene)
+            skyMat.backFaceCulling = false
+            skyMat.disableLighting = true
+
+            // Create gradient texture for sky
+            const skyTexSize = 512
+            const skyTexData = new Uint8Array(skyTexSize * 4)
+            for (let i = 0; i < skyTexSize; i++) {
+                const t = i / (skyTexSize - 1) // 0=bottom, 1=top
+                // Bottom: dusk orange, Top: deep navy
+                const r = DUSK_ORANGE.r * (1 - t) + DEEP_NAVY.r * t
+                const g = DUSK_ORANGE.g * (1 - t) + DEEP_NAVY.g * t
+                const b = DUSK_ORANGE.b * (1 - t) + DEEP_NAVY.b * t
+                skyTexData[i * 4 + 0] = Math.floor(r * 255)
+                skyTexData[i * 4 + 1] = Math.floor(g * 255)
+                skyTexData[i * 4 + 2] = Math.floor(b * 255)
+                skyTexData[i * 4 + 3] = 255
+            }
+            const skyGradientTex = RawTexture.CreateRGBATexture(skyTexData, 1, skyTexSize, scene, false, false)
+            skyMat.emissiveTexture = skyGradientTex
+            // Map the 1-pixel-wide gradient vertically across the sphere
+            skyMat.emissiveColor = Color3.White()
+            skyMat.diffuseColor = Color3.Black()
+            skyDome.material = skyMat
+            skyDome.isPickable = false
+
+            // Exclude sky from fog
+            skyDome.applyFog = false
+
+            // ── Helper: Create a Monolith ──────────────────────────────
+            function createMonolith(name, width, height, depth, position, rotationAxis, rotationSpeed) {
+                const box = MeshBuilder.CreateBox(name, { width, height, depth }, scene)
+                box.position = position
+
+                const mat = new StandardMaterial(name + 'Mat', scene)
+                mat.diffuseColor = MATTE_CHARCOAL
+                mat.specularColor = SOFT_PEACH.scale(0.3)
+                mat.specularPower = 64
+                mat.emissiveColor = MATTE_CHARCOAL.scale(0.05) // faint self-illumination
+                box.material = mat
+
+                return { mesh: box, rotationAxis, rotationSpeed }
+            }
+
+            // ── Player Platform ────────────────────────────────────────
+            const platform = MeshBuilder.CreateBox('platform', {
+                width: 10, height: 0.3, depth: 10
+            }, scene)
+            platform.position = new Vector3(0, -0.15, 0) // top surface at y=0
+
+            const platformMat = new StandardMaterial('platformMat', scene)
+            platformMat.diffuseColor = MATTE_CHARCOAL.scale(0.8)
+            platformMat.specularColor = SOFT_PEACH.scale(0.15)
+            platformMat.specularPower = 32
+            platform.material = platformMat
+
+            // Platform edge glow strips
+            const edgePositions = [
+                { pos: new Vector3(0, 0, 5), scl: new Vector3(10, 0.02, 0.05) },
+                { pos: new Vector3(0, 0, -5), scl: new Vector3(10, 0.02, 0.05) },
+                { pos: new Vector3(5, 0, 0), scl: new Vector3(0.05, 0.02, 10) },
+                { pos: new Vector3(-5, 0, 0), scl: new Vector3(0.05, 0.02, 10) },
+            ]
+            edgePositions.forEach((e, i) => {
+                const strip = MeshBuilder.CreateBox('edge' + i, { size: 1 }, scene)
+                strip.position = e.pos
+                strip.scaling = e.scl
+                const eMat = new StandardMaterial('edgeMat' + i, scene)
+                eMat.emissiveColor = DUSK_ORANGE.scale(0.8)
+                eMat.diffuseColor = Color3.Black()
+                eMat.disableLighting = true
+                strip.material = eMat
+                glowLayer.addIncludedOnlyMesh(strip)
+            })
+
+            // ── Monolith Field ─────────────────────────────────────────
+            // Nearby monoliths (10-25m away)
+            const monolithData = [
+                // name, width, height, depth, x, y, z, rotAxis, rotSpeed
+                { w: 6, h: 30, d: 4, pos: [-12, 8, -15], axis: 'y', speed: 0.03 },
+                { w: 5, h: 25, d: 3, pos: [15, 5, -10], axis: 'z', speed: -0.02 },
+                { w: 8, h: 40, d: 5, pos: [-8, 15, -25], axis: 'y', speed: 0.015 },
+                { w: 4, h: 20, d: 3, pos: [10, -3, -20], axis: 'x', speed: 0.025 },
+                { w: 7, h: 35, d: 4, pos: [20, 10, -18], axis: 'y', speed: -0.01 },
+
+                // Mid-range monoliths (25-50m)
+                { w: 10, h: 50, d: 6, pos: [-30, 20, -40], axis: 'y', speed: 0.008 },
+                { w: 8, h: 45, d: 5, pos: [35, -5, -35], axis: 'z', speed: -0.012 },
+                { w: 6, h: 30, d: 4, pos: [-25, -10, -30], axis: 'x', speed: 0.018 },
+                { w: 9, h: 42, d: 7, pos: [28, 25, -45], axis: 'y', speed: -0.007 },
+
+                // Distant monoliths (50-100m) — will be progressively fogged
+                { w: 10, h: 50, d: 8, pos: [-60, 15, -70], axis: 'y', speed: 0.005 },
+                { w: 8, h: 45, d: 6, pos: [55, 0, -80], axis: 'z', speed: -0.004 },
+                { w: 12, h: 50, d: 7, pos: [-50, -15, -90], axis: 'y', speed: 0.006 },
+                { w: 9, h: 40, d: 5, pos: [70, 10, -65], axis: 'x', speed: -0.003 },
+                { w: 11, h: 48, d: 6, pos: [-45, 30, -85], axis: 'y', speed: 0.004 },
+                { w: 7, h: 35, d: 4, pos: [80, -8, -75], axis: 'z', speed: 0.005 },
+
+                // Behind / sides for full surround
+                { w: 6, h: 28, d: 4, pos: [-15, 12, 20], axis: 'y', speed: 0.02 },
+                { w: 5, h: 22, d: 3, pos: [18, 7, 25], axis: 'z', speed: -0.015 },
+                { w: 10, h: 45, d: 6, pos: [-40, 18, 50], axis: 'y', speed: 0.006 },
+                { w: 8, h: 38, d: 5, pos: [45, -5, 55], axis: 'x', speed: -0.008 },
+
+                // Left and right flanks
+                { w: 7, h: 32, d: 4, pos: [-35, 5, 0], axis: 'y', speed: 0.012 },
+                { w: 6, h: 28, d: 3, pos: [38, 14, 5], axis: 'z', speed: -0.01 },
+            ]
+
+            const monoliths = monolithData.map((d, i) => {
+                return createMonolith(
+                    'monolith' + i,
+                    d.w, d.h, d.d,
+                    new Vector3(d.pos[0], d.pos[1], d.pos[2]),
+                    d.axis,
+                    d.speed
+                )
+            })
+
+            // ── God Ray Sun Mesh ───────────────────────────────────────
+            // Position a glowing orb at the sun's location for volumetric scattering
+            const sunPosition = sunDir.normalize().scale(-180)
+            const sunOrb = MeshBuilder.CreateSphere('sunOrb', { diameter: 12, segments: 16 }, scene)
+            sunOrb.position = sunPosition
+            const sunOrbMat = new StandardMaterial('sunOrbMat', scene)
+            sunOrbMat.emissiveColor = PALE_YELLOW
+            sunOrbMat.diffuseColor = Color3.Black()
+            sunOrbMat.disableLighting = true
+            sunOrb.material = sunOrbMat
+            sunOrb.applyFog = false
+            sunOrb.isPickable = false
+
+            // Volumetric light scattering (god rays) from the sun orb
+            const godrays = new VolumetricLightScatteringPostProcess(
+                'godrays', 1.0, camera, sunOrb, 80,
+                Texture.BILINEAR_SAMPLINGMODE, engine, false, scene
+            )
+            godrays.exposure = 0.25
+            godrays.decay = 0.97
+            godrays.weight = 0.6
+            godrays.density = 0.9
+
+            // ── Cloud Wisps (Billboard Planes) ─────────────────────────
+            function createCloudWisp(name, position, width, height, opacity) {
+                const plane = MeshBuilder.CreatePlane(name, { width, height }, scene)
+                plane.position = position
+                plane.billboardMode = 7 // BILLBOARD_ALL
+
+                // Create a soft cloud-like texture procedurally
+                const cloudTexSize = 128
+                const cloudData = new Uint8Array(cloudTexSize * cloudTexSize * 4)
+                const cx = cloudTexSize / 2
+                const cy = cloudTexSize / 2
+                for (let y = 0; y < cloudTexSize; y++) {
+                    for (let x = 0; x < cloudTexSize; x++) {
+                        const idx = (y * cloudTexSize + x) * 4
+                        const dx = (x - cx) / cx
+                        const dy = (y - cy) / cy
+                        const dist = Math.sqrt(dx * dx + dy * dy)
+                        // Soft radial falloff with noise-like variation
+                        const noise = Math.sin(x * 0.3) * Math.cos(y * 0.5) * 0.15 +
+                                      Math.sin(x * 0.7 + y * 0.4) * 0.1
+                        const alpha = Math.max(0, (1 - dist * 1.2 + noise) * opacity)
+                        // Warm peach-tinted cloud
+                        cloudData[idx + 0] = 220
+                        cloudData[idx + 1] = 180
+                        cloudData[idx + 2] = 150
+                        cloudData[idx + 3] = Math.floor(alpha * 255)
+                    }
+                }
+
+                const cloudTex = RawTexture.CreateRGBATexture(
+                    cloudData, cloudTexSize, cloudTexSize, scene, false, false,
+                    Texture.BILINEAR_SAMPLINGMODE
+                )
+
+                const mat = new StandardMaterial(name + 'Mat', scene)
+                mat.diffuseTexture = cloudTex
+                mat.diffuseTexture.hasAlpha = true
+                mat.useAlphaFromDiffuseTexture = true
+                mat.emissiveColor = SOFT_PEACH.scale(0.15)
+                mat.disableLighting = true
+                mat.backFaceCulling = false
+                plane.material = mat
+                plane.isPickable = false
+                plane.applyFog = false
+
+                return plane
+            }
+
+            // Scatter cloud wisps at various heights between monoliths
+            const cloudWisps = [
+                createCloudWisp('cloud0', new Vector3(-8, 6, -12), 15, 4, 0.3),
+                createCloudWisp('cloud1', new Vector3(12, 10, -22), 20, 5, 0.25),
+                createCloudWisp('cloud2', new Vector3(-20, 18, -35), 25, 6, 0.2),
+                createCloudWisp('cloud3', new Vector3(25, 14, -40), 18, 5, 0.22),
+                createCloudWisp('cloud4', new Vector3(-35, 22, -55), 30, 8, 0.15),
+                createCloudWisp('cloud5', new Vector3(40, 8, -50), 22, 6, 0.18),
+                createCloudWisp('cloud6', new Vector3(-5, 25, -60), 28, 7, 0.12),
+                createCloudWisp('cloud7', new Vector3(15, 3, 15), 12, 4, 0.28),
+                createCloudWisp('cloud8', new Vector3(-30, 16, 30), 20, 5, 0.2),
+                createCloudWisp('cloud9', new Vector3(30, 20, -25), 16, 4, 0.25),
+                createCloudWisp('cloud10', new Vector3(-15, 30, -45), 22, 5, 0.15),
+                createCloudWisp('cloud11', new Vector3(50, 12, -30), 18, 5, 0.18),
+            ]
+
+            // ── Wind Particle Drift ────────────────────────────────────
+            // Tiny dots drifting horizontally to give sense of wind / atmosphere
+            // Create a small white dot texture for particles
+            const particleTexSize = 32
+            const particleTexData = new Uint8Array(particleTexSize * particleTexSize * 4)
+            for (let y = 0; y < particleTexSize; y++) {
+                for (let x = 0; x < particleTexSize; x++) {
+                    const idx = (y * particleTexSize + x) * 4
+                    const dx = (x - particleTexSize / 2) / (particleTexSize / 2)
+                    const dy = (y - particleTexSize / 2) / (particleTexSize / 2)
+                    const dist = Math.sqrt(dx * dx + dy * dy)
+                    const alpha = Math.max(0, 1 - dist)
+                    particleTexData[idx + 0] = 255
+                    particleTexData[idx + 1] = 244
+                    particleTexData[idx + 2] = 220
+                    particleTexData[idx + 3] = Math.floor(alpha * alpha * 255) // soft dot
+                }
+            }
+            const particleTex = RawTexture.CreateRGBATexture(
+                particleTexData, particleTexSize, particleTexSize, scene, false, false,
+                Texture.BILINEAR_SAMPLINGMODE
+            )
+
+            const windParticles = new ParticleSystem('wind', 400, scene)
+            windParticles.particleTexture = particleTex
+
+            // Emit from a large box volume around the player
+            windParticles.createBoxEmitter(
+                new Vector3(2.0, 0.1, 0.3),    // direction1 — mostly horizontal
+                new Vector3(1.5, -0.05, -0.2),  // direction2
+                new Vector3(-40, -5, -50),       // minEmitBox
+                new Vector3(40, 35, 50)          // maxEmitBox
+            )
+
+            windParticles.minSize = 0.03
+            windParticles.maxSize = 0.1
+            windParticles.minLifeTime = 8
+            windParticles.maxLifeTime = 15
+            windParticles.emitRate = 30
+            windParticles.minEmitPower = 0.5
+            windParticles.maxEmitPower = 1.5
+            windParticles.color1 = new Color4(1, 0.96, 0.88, 0.3)
+            windParticles.color2 = new Color4(1, 0.8, 0.65, 0.15)
+            windParticles.colorDead = new Color4(0.5, 0.3, 0.2, 0)
+            windParticles.blendMode = ParticleSystem.BLENDMODE_ADD
+            windParticles.gravity = new Vector3(0, 0, 0)
+            windParticles.start()
+
+            // ── Ambient Floating Dust (closer, subtler) ────────────────
+            const dustParticles = new ParticleSystem('dust', 200, scene)
+            dustParticles.particleTexture = particleTex
+
+            dustParticles.createBoxEmitter(
+                new Vector3(0.3, 0.15, 0.1),
+                new Vector3(-0.2, 0.1, -0.1),
+                new Vector3(-8, 0, -8),
+                new Vector3(8, 6, 8)
+            )
+
+            dustParticles.minSize = 0.01
+            dustParticles.maxSize = 0.04
+            dustParticles.minLifeTime = 5
+            dustParticles.maxLifeTime = 12
+            dustParticles.emitRate = 15
+            dustParticles.minEmitPower = 0.1
+            dustParticles.maxEmitPower = 0.3
+            dustParticles.color1 = new Color4(1, 0.95, 0.85, 0.2)
+            dustParticles.color2 = new Color4(1, 0.85, 0.7, 0.08)
+            dustParticles.colorDead = new Color4(0.5, 0.3, 0.2, 0)
+            dustParticles.blendMode = ParticleSystem.BLENDMODE_ADD
+            dustParticles.gravity = new Vector3(0, 0.01, 0)
+            dustParticles.start()
+
+            // ── Post-Processing Pipeline ───────────────────────────────
+            const pipeline = new DefaultRenderingPipeline('pipeline', true, scene, [camera])
+            pipeline.bloomEnabled = true
+            pipeline.bloomThreshold = 0.3
+            pipeline.bloomWeight = 0.4
+            pipeline.bloomKernel = 64
+            pipeline.bloomScale = 0.5
+
+            // ── WebXR ──────────────────────────────────────────────────
+            await WebXRDefaultExperience.CreateAsync(scene, {
+                uiOptions: { sessionMode: 'immersive-vr' },
+                disableTeleportation: true,
+            }).catch(console.error)
+
+            // ── Animation Loop ─────────────────────────────────────────
+            let elapsed = 0
+
+            scene.registerBeforeRender(() => {
+                const dt = engine.getDeltaTime() / 1000
+                elapsed += dt
+
+                // Rotate monoliths slowly on their designated axes
+                for (const m of monoliths) {
+                    const angle = m.rotationSpeed * dt
+                    switch (m.rotationAxis) {
+                        case 'x':
+                            m.mesh.rotation.x += angle
+                            break
+                        case 'y':
+                            m.mesh.rotation.y += angle
+                            break
+                        case 'z':
+                            m.mesh.rotation.z += angle
+                            break
+                    }
+                }
+
+                // Subtle vertical bob on monoliths (sine wave, different phase per monolith)
+                for (let i = 0; i < monoliths.length; i++) {
+                    const m = monoliths[i]
+                    const bobAmplitude = 0.3 + (i % 5) * 0.15
+                    const bobFrequency = 0.15 + (i % 3) * 0.05
+                    const phase = i * 1.7 // spread phases
+                    m.mesh.position.y += Math.sin(elapsed * bobFrequency + phase) * bobAmplitude * dt
+                }
+
+                // Drift cloud wisps slowly horizontally
+                for (let i = 0; i < cloudWisps.length; i++) {
+                    const cloud = cloudWisps[i]
+                    const driftSpeed = 0.3 + (i % 4) * 0.15
+                    const driftDir = i % 2 === 0 ? 1 : -1
+                    cloud.position.x += driftSpeed * driftDir * dt
+                    // Subtle vertical undulation
+                    cloud.position.y += Math.sin(elapsed * 0.2 + i * 2.3) * 0.05 * dt
+
+                    // Wrap clouds that drift too far
+                    if (cloud.position.x > 80) cloud.position.x = -80
+                    if (cloud.position.x < -80) cloud.position.x = 80
+                }
+
+                // Pulse the platform edge glow subtly
+                const edgePulse = 0.6 + 0.4 * Math.sin(elapsed * 0.8)
+                scene.meshes.forEach(mesh => {
+                    if (mesh.name.startsWith('edge')) {
+                        const mat = mesh.material
+                        if (mat) {
+                            mat.emissiveColor = DUSK_ORANGE.scale(edgePulse)
+                        }
+                    }
+                })
+
+                // Sun orb subtle pulse
+                const sunPulse = 0.9 + 0.1 * Math.sin(elapsed * 0.5)
+                sunOrbMat.emissiveColor = PALE_YELLOW.scale(sunPulse)
+            })
+
+            // ── Render Loop ────────────────────────────────────────────
+            engine.runRenderLoop(() => scene.render())
+            window.addEventListener('resize', () => engine.resize())
+        </script>
+    </body>
+</html>

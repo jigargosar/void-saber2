@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Lobby: Crystal Cavern</title>
+        <style>
+            * { margin: 0; padding: 0; }
+            canvas { width: 100vw; height: 100vh; display: block; }
+        </style>
+    </head>
+    <body>
+        <canvas id="canvas"></canvas>
+        <script type="module">
+            import { Engine } from '@babylonjs/core/Engines/engine'
+            import { Scene } from '@babylonjs/core/scene'
+            import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera'
+            import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight'
+            import { PointLight } from '@babylonjs/core/Lights/pointLight'
+            import { SpotLight } from '@babylonjs/core/Lights/spotLight'
+            import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator'
+            import '@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent'
+            import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
+            import '@babylonjs/core/Meshes/mesh'
+            import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
+            import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
+            import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
+            import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture'
+            import '@babylonjs/core/Materials/Textures/texture'
+            import { GlowLayer } from '@babylonjs/core/Layers/glowLayer'
+            import { ParticleSystem } from '@babylonjs/core/Particles/particleSystem'
+            import { Vector3, Color3, Color4 } from '@babylonjs/core/Maths/math'
+            import { WebXRDefaultExperience } from '@babylonjs/core/XR/webXRDefaultExperience'
+            import '@babylonjs/core/Helpers/sceneHelpers'
+
+            // ── Palette ──────────────────────────────────────────
+            const DEEP_TEAL     = Color3.FromHexString('#0a2e2e')
+            const ICE_BLUE      = Color3.FromHexString('#7fdbff')
+            const PALE_VIOLET   = Color3.FromHexString('#c4a8ff')
+            const WARM_AMBER    = Color3.FromHexString('#ffb347')
+            const FLOOR_GREEN   = Color3.FromHexString('#0d1f1a')
+
+            // ── Seeded random ────────────────────────────────────
+            function mulberry32(seed) {
+                return function () {
+                    seed |= 0; seed = (seed + 0x6D2B79F5) | 0
+                    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
+                    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+                    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+                }
+            }
+            const rand = mulberry32(42)
+            // ── Engine + Scene ───────────────────────────────────
+            const canvas = document.getElementById('canvas')
+            const engine = new Engine(canvas, true)
+            const scene = new Scene(engine)
+            scene.clearColor = new Color4(DEEP_TEAL.r * 0.3, DEEP_TEAL.g * 0.3, DEEP_TEAL.b * 0.3, 1)
+
+            // Exponential fog — deep teal tinted
+            scene.fogMode = Scene.FOGMODE_EXP2
+            scene.fogDensity = 0.06
+            scene.fogColor = new Color3(DEEP_TEAL.r * 0.5, DEEP_TEAL.g * 0.5, DEEP_TEAL.b * 0.5)
+
+            // ── Camera ───────────────────────────────────────────
+            const camera = new FreeCamera('cam', new Vector3(0, 1.6, 3), scene)
+            camera.setTarget(new Vector3(0, 1.6, 0))
+            camera.attachControl()
+            camera.minZ = 0.1
+
+            // ── Glow Layer ───────────────────────────────────────
+            const glow = new GlowLayer('glow', scene, {
+                mainTextureSamples: 4,
+                blurKernelSize: 64,
+            })
+            glow.intensity = 0.8
+            glow.customEmissiveColorSelector = (mesh, _sub, _mat, result) => {
+                if (mesh.material instanceof StandardMaterial) {
+                    const ec = mesh.material.emissiveColor
+                    result.set(ec.r, ec.g, ec.b, 1)
+                } else if (mesh.material instanceof PBRMaterial) {
+                    const ec = mesh.material.emissiveColor
+                    result.set(ec.r * mesh.material.emissiveIntensity, ec.g * mesh.material.emissiveIntensity, ec.b * mesh.material.emissiveIntensity, 1)
+                } else {
+                    result.set(0, 0, 0, 0)
+                }
+            }
+
+            // ── Lights ───────────────────────────────────────────
+
+            // Dim ambient fill — cold blue
+            const ambient = new HemisphericLight('ambient', new Vector3(0, 1, 0), scene)
+            ambient.intensity = 0.06
+            ambient.diffuse = new Color3(0.15, 0.25, 0.35)
+            ambient.groundColor = new Color3(0.02, 0.05, 0.05)
+            ambient.specular = Color3.Black()
+
+            // Primary warm amber backlight — behind the main crystal cluster
+            // Positioned off to the right and slightly behind/above the player
+            const amberLight = new PointLight('amberKey', new Vector3(3.5, 2.8, -1.5), scene)
+            amberLight.diffuse = WARM_AMBER
+            amberLight.specular = WARM_AMBER.scale(0.4)
+            amberLight.intensity = 3.5
+            amberLight.range = 12
+
+            // Secondary amber fill from behind
+            const amberFill = new PointLight('amberFill', new Vector3(2.5, 1.0, -2.5), scene)
+            amberFill.diffuse = WARM_AMBER.scale(0.6)
+            amberFill.intensity = 1.2
+            amberFill.range = 8
+
+            // Spot light for dramatic caustic-like projection onto far wall
+            const causticSpot = new SpotLight(
+                'causticSpot',
+                new Vector3(3, 2.5, -1),
+                new Vector3(-1, -0.3, 0.5).normalize(),
+                Math.PI / 3,
+                4,
+                scene,
+            )
+            causticSpot.diffuse = ICE_BLUE.scale(0.5)
+            causticSpot.intensity = 6
+            causticSpot.range = 10
+
+            // Create caustic projection texture
+            const causticTex = new DynamicTexture('causticTex', 512, scene, false)
+            const causticCtx = causticTex.getContext()
+            causticCtx.fillStyle = '#000000'
+            causticCtx.fillRect(0, 0, 512, 512)
+            // Paint irregular bright caustic-like pattern
+            for (let i = 0; i < 60; i++) {
+                const cx = rand() * 512
+                const cy = rand() * 512
+                const rx = 10 + rand() * 40
+                const ry = 5 + rand() * 25
+                const alpha = 0.15 + rand() * 0.5
+                causticCtx.save()
+                causticCtx.translate(cx, cy)
+                causticCtx.rotate(rand() * Math.PI * 2)
+                causticCtx.beginPath()
+                causticCtx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2)
+                const blueOrViolet = rand() > 0.5
+                    ? `rgba(127, 219, 255, ${alpha})`
+                    : `rgba(196, 168, 255, ${alpha * 0.7})`
+                causticCtx.fillStyle = blueOrViolet
+                causticCtx.fill()
+                causticCtx.restore()
+            }
+            causticTex.update()
+            causticSpot.projectedLightTexture = causticTex
+
+            // Ice-blue crystal light — left side
+            const crystalLightL = new PointLight('crystalLightL', new Vector3(-2.5, 1.5, 0.5), scene)
+            crystalLightL.diffuse = ICE_BLUE
+            crystalLightL.intensity = 1.5
+            crystalLightL.range = 6
+
+            // Pale violet crystal light — left-front
+            const crystalLightV = new PointLight('crystalLightV', new Vector3(-1.5, 2.5, 1.5), scene)
+            crystalLightV.diffuse = PALE_VIOLET
+            crystalLightV.intensity = 1.0
+            crystalLightV.range = 5
+
+            // ── Shadow generator on the amber key light ──────────
+            // Use spot light for shadow (point lights don't support shadow maps in WebGL1)
+            const shadowSpot = new SpotLight(
+                'shadowSpot',
+                new Vector3(3.5, 2.8, -1.5),
+                new Vector3(-0.6, -0.4, 0.3).normalize(),
+                Math.PI / 2,
+                2,
+                scene,
+            )
+            shadowSpot.diffuse = WARM_AMBER.scale(0.3)
+            shadowSpot.intensity = 2
+            shadowSpot.range = 14
+            const shadowGen = new ShadowGenerator(1024, shadowSpot)
+            shadowGen.useBlurExponentialShadowMap = true
+            shadowGen.blurKernel = 16
+
+            // ── Helpers ──────────────────────────────────────────
+
+            // Displace mesh vertices with noise for rough organic look
+            function displaceVertices(mesh, amount) {
+                const positions = mesh.getVerticesData('position')
+                if (!positions) return
+                for (let i = 0; i < positions.length; i += 3) {
+                    positions[i] += (rand() - 0.5) * amount
+                    positions[i + 1] += (rand() - 0.5) * amount
+                    positions[i + 2] += (rand() - 0.5) * amount
+                }
+                mesh.updateVerticesData('position', positions)
+                mesh.createNormals(true)
+            }
+
+            // Create a hexagonal prism crystal
+            function createCrystal(name, height, radius, scene) {
+                const crystal = MeshBuilder.CreateCylinder(name, {
+                    height: height,
+                    diameterTop: 0,
+                    diameterBottom: radius * 2,
+                    tessellation: 6,
+                    subdivisions: 1,
+                }, scene)
+
+                // Create the lower half as well for a double-terminated crystal look
+                const bottom = MeshBuilder.CreateCylinder(name + '_btm', {
+                    height: height * 0.3,
+                    diameterTop: radius * 2,
+                    diameterBottom: radius * 0.4,
+                    tessellation: 6,
+                    subdivisions: 1,
+                }, scene)
+                bottom.position.y = -height * 0.65
+                bottom.parent = crystal
+
+                return crystal
+            }
+
+            // Create a crystal cluster at given position
+            function createCrystalCluster(clusterName, pos, baseScale, color, emissiveStrength, count, scene) {
+                const root = new TransformNode(clusterName, scene)
+                root.position = pos
+
+                const mat = new StandardMaterial(clusterName + '_mat', scene)
+                mat.diffuseColor = color.scale(0.3)
+                mat.specularColor = color.scale(0.5)
+                mat.specularPower = 64
+                mat.emissiveColor = color.scale(emissiveStrength)
+                mat.alpha = 0.85
+                mat.backFaceCulling = false
+
+                const crystals = []
+                for (let i = 0; i < count; i++) {
+                    const h = baseScale * (0.5 + rand() * 1.5)
+                    const r = baseScale * (0.05 + rand() * 0.08)
+                    const crystal = createCrystal(`${clusterName}_c${i}`, h, r, scene)
+                    crystal.material = mat
+                    crystal.parent = root
+
+                    // Random tilt and offset within cluster
+                    crystal.position.x = (rand() - 0.5) * baseScale * 0.4
+                    crystal.position.z = (rand() - 0.5) * baseScale * 0.4
+                    crystal.position.y = h * 0.3
+
+                    crystal.rotation.x = (rand() - 0.5) * 0.5
+                    crystal.rotation.z = (rand() - 0.5) * 0.5
+                    crystal.rotation.y = rand() * Math.PI * 2
+
+                    shadowGen.addShadowCaster(crystal)
+                    crystals.push(crystal)
+                }
+
+                return { root, mat, crystals }
+            }
+
+            // ── Cave Geometry ────────────────────────────────────
+
+            // Floor — rough dark ground
+            const floor = MeshBuilder.CreateGround('floor', { width: 12, height: 12, subdivisions: 32 }, scene)
+            const floorMat = new StandardMaterial('floorMat', scene)
+            floorMat.diffuseColor = FLOOR_GREEN.scale(0.6)
+            floorMat.specularColor = new Color3(0.02, 0.03, 0.03)
+            floorMat.specularPower = 16
+            floor.material = floorMat
+            floor.receiveShadows = true
+            displaceVertices(floor, 0.08)
+
+            // Cave walls — irregular enclosure using displaced polyhedra / boxes
+            function createWallSection(wallName, pos, scaleX, scaleY, scaleZ) {
+                const wall = MeshBuilder.CreateBox(wallName, {
+                    width: scaleX,
+                    height: scaleY,
+                    depth: scaleZ,
+                }, scene)
+                wall.position = pos
+
+                const mat = new StandardMaterial(wallName + '_mat', scene)
+                mat.diffuseColor = DEEP_TEAL.scale(0.8)
+                mat.specularColor = DEEP_TEAL.scale(0.1)
+                mat.specularPower = 8
+                wall.material = mat
+                wall.receiveShadows = true
+
+                // Subdivide and displace for rocky look
+                wall.increaseVertices(3)
+                displaceVertices(wall, 0.25)
+
+                return wall
+            }
+
+            // Right wall (closer, where main crystal cluster lives)
+            createWallSection('wallR', new Vector3(4.5, 1.5, 0), 2, 4, 10)
+            createWallSection('wallR2', new Vector3(4.0, 1.5, -3), 2.5, 4.5, 5)
+            createWallSection('wallR3', new Vector3(4.2, 1.5, 3), 2, 3.5, 4)
+
+            // Left wall
+            createWallSection('wallL', new Vector3(-4.5, 1.5, 0), 2, 4, 10)
+            createWallSection('wallL2', new Vector3(-4.0, 1.5, -2.5), 2.5, 4, 5)
+            createWallSection('wallL3', new Vector3(-4.2, 1.5, 3.5), 2, 3.5, 4)
+
+            // Back wall
+            createWallSection('wallB', new Vector3(0, 1.5, -5.5), 10, 4.5, 2)
+            createWallSection('wallB2', new Vector3(-2, 2, -5), 4, 3.5, 2.5)
+
+            // Front wall (behind player)
+            createWallSection('wallF', new Vector3(0, 1.5, 6.5), 10, 4, 2)
+
+            // Ceiling — low and uneven
+            const ceiling = MeshBuilder.CreateGround('ceiling', { width: 12, height: 12, subdivisions: 24 }, scene)
+            ceiling.position.y = 3.8
+            ceiling.rotation.x = Math.PI  // flip upside down
+            const ceilMat = new StandardMaterial('ceilMat', scene)
+            ceilMat.diffuseColor = DEEP_TEAL.scale(0.5)
+            ceilMat.specularColor = Color3.Black()
+            ceiling.material = ceilMat
+            ceiling.receiveShadows = true
+            displaceVertices(ceiling, 0.35)
+
+            // ── Crystal Formations ───────────────────────────────
+
+            // Main crystal cluster — large, right side, slightly behind player
+            // This is what the amber backlight illuminates, creating silhouettes
+            const mainCluster = createCrystalCluster(
+                'mainCluster',
+                new Vector3(3, 0, -1),
+                1.8,
+                ICE_BLUE,
+                0.4,
+                7,
+                scene,
+            )
+            // Rotate cluster slightly for drama
+            mainCluster.root.rotation.y = -0.3
+
+            // Secondary large cluster — left wall, mid-height
+            const leftCluster = createCrystalCluster(
+                'leftCluster',
+                new Vector3(-3.2, 0.5, 0.5),
+                1.4,
+                ICE_BLUE,
+                0.35,
+                5,
+                scene,
+            )
+            leftCluster.root.rotation.z = 0.3
+            leftCluster.root.rotation.y = 0.8
+
+            // Violet cluster — ceiling stalactite-like, left-front
+            const violetCeiling = createCrystalCluster(
+                'violetCeiling',
+                new Vector3(-1.5, 3.2, 1.5),
+                1.2,
+                PALE_VIOLET,
+                0.45,
+                5,
+                scene,
+            )
+            violetCeiling.root.rotation.x = Math.PI  // point down
+            violetCeiling.root.rotation.y = 1.2
+
+            // Small violet cluster emerging from floor — front-left
+            const violetFloor = createCrystalCluster(
+                'violetFloor',
+                new Vector3(-2, 0, 2),
+                0.7,
+                PALE_VIOLET,
+                0.3,
+                4,
+                scene,
+            )
+
+            // Floor cluster — small blue crystals, right side near player
+            const floorClusterR = createCrystalCluster(
+                'floorClusterR',
+                new Vector3(2, 0, 2),
+                0.6,
+                ICE_BLUE,
+                0.25,
+                3,
+                scene,
+            )
+
+            // Ceiling stalactite cluster — center-back
+            const ceilCluster = createCrystalCluster(
+                'ceilCluster',
+                new Vector3(0.5, 3.5, -2),
+                1.0,
+                ICE_BLUE,
+                0.3,
+                4,
+                scene,
+            )
+            ceilCluster.root.rotation.x = Math.PI
+
+            // Small accent cluster — far back right
+            const backCluster = createCrystalCluster(
+                'backCluster',
+                new Vector3(2.5, 0.3, -3.5),
+                0.8,
+                PALE_VIOLET,
+                0.35,
+                3,
+                scene,
+            )
+
+            // Tiny crystals scattered on floor near walls
+            for (let i = 0; i < 8; i++) {
+                const side = i % 2 === 0 ? 1 : -1
+                const x = side * (2.5 + rand() * 1.5)
+                const z = (rand() - 0.5) * 8
+                const col = rand() > 0.5 ? ICE_BLUE : PALE_VIOLET
+                createCrystalCluster(
+                    `tiny_${i}`,
+                    new Vector3(x, 0, z),
+                    0.3 + rand() * 0.3,
+                    col,
+                    0.2 + rand() * 0.15,
+                    2,
+                    scene,
+                )
+            }
+
+            // ── Rocky Stalactites (non-crystal) ──────────────────
+            for (let i = 0; i < 10; i++) {
+                const x = (rand() - 0.5) * 8
+                const z = (rand() - 0.5) * 8
+                const h = 0.4 + rand() * 0.8
+                const r = 0.05 + rand() * 0.1
+                const stalactite = MeshBuilder.CreateCylinder(`stal_${i}`, {
+                    height: h,
+                    diameterTop: 0,
+                    diameterBottom: r * 2,
+                    tessellation: 5 + Math.floor(rand() * 3),
+                    subdivisions: 2,
+                }, scene)
+                stalactite.position = new Vector3(x, 3.5 - h * 0.5, z)
+                const stalMat = new StandardMaterial(`stalMat_${i}`, scene)
+                stalMat.diffuseColor = DEEP_TEAL.scale(0.6 + rand() * 0.3)
+                stalMat.specularColor = Color3.Black()
+                stalactite.material = stalMat
+                displaceVertices(stalactite, 0.03)
+            }
+
+            // ── Floor Fog Plane ──────────────────────────────────
+            // A translucent plane at knee height simulating hugging fog
+            const fogPlane = MeshBuilder.CreateGround('fogPlane', { width: 10, height: 10, subdivisions: 1 }, scene)
+            fogPlane.position.y = 0.25
+            const fogMat = new StandardMaterial('fogMat', scene)
+            fogMat.diffuseColor = new Color3(0.1, 0.2, 0.25)
+            fogMat.emissiveColor = new Color3(0.03, 0.08, 0.12)
+            fogMat.alpha = 0.18
+            fogMat.backFaceCulling = false
+            fogMat.disableLighting = true
+            fogPlane.material = fogMat
+
+            // Second layer slightly higher for depth
+            const fogPlane2 = MeshBuilder.CreateGround('fogPlane2', { width: 9, height: 9, subdivisions: 1 }, scene)
+            fogPlane2.position.y = 0.4
+            const fogMat2 = new StandardMaterial('fogMat2', scene)
+            fogMat2.diffuseColor = new Color3(0.08, 0.15, 0.2)
+            fogMat2.emissiveColor = new Color3(0.02, 0.06, 0.1)
+            fogMat2.alpha = 0.1
+            fogMat2.backFaceCulling = false
+            fogMat2.disableLighting = true
+            fogPlane2.material = fogMat2
+
+            // ── Particle System — Sparkle Motes ──────────────────
+
+            // Create a tiny white circle texture for particles
+            const particleTex = new DynamicTexture('particleTex', 64, scene, false)
+            const pCtx = particleTex.getContext()
+            pCtx.clearRect(0, 0, 64, 64)
+            const gradient = pCtx.createRadialGradient(32, 32, 0, 32, 32, 28)
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)')
+            gradient.addColorStop(0.3, 'rgba(200, 230, 255, 0.8)')
+            gradient.addColorStop(1, 'rgba(127, 219, 255, 0)')
+            pCtx.fillStyle = gradient
+            pCtx.beginPath()
+            pCtx.arc(32, 32, 28, 0, Math.PI * 2)
+            pCtx.fill()
+            particleTex.update()
+
+            const sparkles = new ParticleSystem('sparkles', 200, scene)
+            sparkles.particleTexture = particleTex
+
+            sparkles.emitter = new Vector3(0, 1.5, 0)
+            sparkles.minEmitBox = new Vector3(-4, -1.2, -4)
+            sparkles.maxEmitBox = new Vector3(4, 1.5, 4)
+
+            sparkles.color1 = new Color4(0.5, 0.86, 1, 0.6)
+            sparkles.color2 = new Color4(0.77, 0.66, 1, 0.5)
+            sparkles.colorDead = new Color4(0.3, 0.5, 0.6, 0)
+
+            sparkles.minSize = 0.008
+            sparkles.maxSize = 0.025
+            sparkles.minLifeTime = 6
+            sparkles.maxLifeTime = 14
+            sparkles.emitRate = 15
+
+            // Very slow drift — almost stationary
+            sparkles.direction1 = new Vector3(-0.003, 0.002, -0.003)
+            sparkles.direction2 = new Vector3(0.003, 0.005, 0.003)
+            sparkles.gravity = new Vector3(0, -0.001, 0)
+
+            sparkles.minEmitPower = 0.001
+            sparkles.maxEmitPower = 0.005
+
+            sparkles.blendMode = ParticleSystem.BLENDMODE_ADD
+            sparkles.start()
+
+            // ── Animated Caustic Texture ─────────────────────────
+            // Slowly animate the caustic projection texture by rotating it
+            let causticTime = 0
+
+            // ── Crystal Pulse Animation Data ─────────────────────
+            const allClusters = [mainCluster, leftCluster, violetCeiling, violetFloor, floorClusterR, ceilCluster, backCluster]
+            const clusterBaseEmissive = allClusters.map(c => c.mat.emissiveColor.clone())
+
+            // ── Render Loop ──────────────────────────────────────
+            scene.registerBeforeRender(() => {
+                const dt = engine.getDeltaTime() / 1000
+                const time = performance.now() / 1000
+
+                // Slow crystal emissive pulse — each cluster has its own phase
+                for (let i = 0; i < allClusters.length; i++) {
+                    const phase = i * 1.37  // golden-angle offset
+                    const pulse = 0.85 + 0.15 * Math.sin(time * 0.4 + phase)
+                    const base = clusterBaseEmissive[i]
+                    allClusters[i].mat.emissiveColor = new Color3(
+                        base.r * pulse,
+                        base.g * pulse,
+                        base.b * pulse,
+                    )
+                }
+
+                // Animate fog planes — gentle bobbing
+                fogPlane.position.y = 0.25 + Math.sin(time * 0.3) * 0.03
+                fogPlane2.position.y = 0.4 + Math.sin(time * 0.25 + 1) * 0.02
+                fogMat.alpha = 0.16 + Math.sin(time * 0.2) * 0.03
+                fogMat2.alpha = 0.09 + Math.sin(time * 0.15 + 0.5) * 0.02
+
+                // Animate caustic projection — slowly shift pattern
+                causticTime += dt
+                if (causticTime > 0.1) {
+                    causticTime = 0
+                    // Slowly rotate caustic spot direction
+                    const angle = time * 0.05
+                    causticSpot.direction = new Vector3(
+                        -1 + Math.sin(angle) * 0.2,
+                        -0.3 + Math.cos(angle * 0.7) * 0.05,
+                        0.5 + Math.cos(angle) * 0.15,
+                    ).normalize()
+                }
+
+                // Gentle amber light flicker
+                amberLight.intensity = 3.5 + Math.sin(time * 1.5) * 0.3 + Math.sin(time * 3.7) * 0.15
+
+                // Subtle crystal light variation
+                crystalLightL.intensity = 1.5 + Math.sin(time * 0.6 + 2) * 0.2
+                crystalLightV.intensity = 1.0 + Math.sin(time * 0.5 + 4) * 0.15
+            })
+
+            // ── WebXR ────────────────────────────────────────────
+            await WebXRDefaultExperience.CreateAsync(scene, {
+                uiOptions: { sessionMode: 'immersive-vr' },
+                disableTeleportation: true,
+            }).catch(console.error)
+
+            // ── Run ──────────────────────────────────────────────
+            engine.runRenderLoop(() => scene.render())
+            window.addEventListener('resize', () => engine.resize())
+        </script>
+    </body>
+</html>

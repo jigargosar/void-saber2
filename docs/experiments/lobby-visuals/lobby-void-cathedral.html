@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Lobby: Void Cathedral</title>
+        <style>
+            * { margin: 0; padding: 0; }
+            canvas { width: 100vw; height: 100vh; display: block; }
+        </style>
+    </head>
+    <body>
+        <canvas id="canvas"></canvas>
+        <script type="module">
+            import { Engine } from '@babylonjs/core/Engines/engine'
+            import { Scene } from '@babylonjs/core/scene'
+            import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera'
+            import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight'
+            import { PointLight } from '@babylonjs/core/Lights/pointLight'
+            import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight'
+            import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator'
+            import '@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent'
+            import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
+            import { Mesh } from '@babylonjs/core/Meshes/mesh'
+            import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
+            import { GlowLayer } from '@babylonjs/core/Layers/glowLayer'
+            import { ParticleSystem } from '@babylonjs/core/Particles/particleSystem'
+            import { RawTexture } from '@babylonjs/core/Materials/Textures/rawTexture'
+            import { Constants } from '@babylonjs/core/Engines/constants'
+            import { Vector3, Color3, Color4 } from '@babylonjs/core/Maths/math'
+            import { WebXRDefaultExperience } from '@babylonjs/core/XR/webXRDefaultExperience'
+            import '@babylonjs/core/Helpers/sceneHelpers'
+
+            // ── Palette ─────────────────────────────────────────────
+            const DEEP_INDIGO = new Color3(0.102, 0.039, 0.180)  // #1a0a2e
+            const WARM_GOLD = new Color3(0.831, 0.627, 0.090)    // #d4a017
+            const SLATE_PURPLE = new Color3(0.239, 0.173, 0.369) // #3d2c5e
+            const BONE_WHITE = new Color3(0.910, 0.863, 0.784)   // #e8dcc8
+            const VOID_BLACK = new Color3(0.02, 0.01, 0.04)
+
+            // ── Layout constants ────────────────────────────────────
+            const PILLAR_COUNT = 8           // per side
+            const PILLAR_SPACING = 7         // meters between pillars
+            const PILLAR_X = 6              // distance from center
+            const PILLAR_RADIUS = 0.55       // thick round pillars
+            const PILLAR_HEIGHT = 16         // 8-10x player height
+            const FLOOR_SIZE = 120
+            const TILE_SIZE = 3              // stone tile grid
+            const ARCH_COUNT = 8             // matching pillars
+            const ARCH_SPACING = 7
+            const RIB_COUNT = 16
+            const RIB_SPACING = 4.5
+
+            // ── Engine & Scene ──────────────────────────────────────
+            const canvas = document.getElementById('canvas')
+            const engine = new Engine(canvas, true, { stencil: true })
+            const scene = new Scene(engine)
+
+            scene.clearColor = new Color4(DEEP_INDIGO.r, DEEP_INDIGO.g, DEEP_INDIGO.b, 1)
+            scene.ambientColor = DEEP_INDIGO.scale(0.3)
+
+            // Exponential fog
+            scene.fogMode = Scene.FOGMODE_EXP2
+            scene.fogDensity = 0.035
+            scene.fogColor = DEEP_INDIGO
+
+            // ── Camera ──────────────────────────────────────────────
+            const camera = new FreeCamera('cam', new Vector3(0, 1.6, 3), scene)
+            camera.setTarget(new Vector3(0, 1.6, 0))
+            camera.attachControl()
+            camera.minZ = 0.1
+
+            // ── Lighting ────────────────────────────────────────────
+
+            // Faint ambient fill so nothing is pure black
+            const ambient = new HemisphericLight('ambient', new Vector3(0, 1, 0), scene)
+            ambient.diffuse = DEEP_INDIGO.scale(0.8)
+            ambient.groundColor = VOID_BLACK
+            ambient.intensity = 0.25
+
+            // Main directional: warm sunlight through unseen rose window
+            // Angled from above-forward, casting shadows behind player
+            const sun = new DirectionalLight(
+                'sun',
+                new Vector3(-0.2, -0.7, -0.5).normalize(),
+                scene,
+            )
+            sun.diffuse = WARM_GOLD.scale(1.2)
+            sun.intensity = 2.5
+            sun.position = new Vector3(2, 20, 12)
+
+            // Shadow generator on main light
+            const shadowGen = new ShadowGenerator(2048, sun)
+            shadowGen.useBlurExponentialShadowMap = true
+            shadowGen.blurKernel = 32
+            shadowGen.darkness = 0.6
+
+            // ── Glow Layer ──────────────────────────────────────────
+            const glow = new GlowLayer('glow', scene, {
+                mainTextureSamples: 4,
+                blurKernelSize: 64,
+            })
+            glow.intensity = 0.8
+            glow.customEmissiveColorSelector = (mesh, _subMesh, _material, result) => {
+                if (mesh.material instanceof StandardMaterial) {
+                    const ec = mesh.material.emissiveColor
+                    result.set(ec.r, ec.g, ec.b, 1)
+                } else {
+                    result.set(0, 0, 0, 0)
+                }
+            }
+
+            // ── Materials ───────────────────────────────────────────
+
+            // Stone surface — slate purple, low reflectance
+            const stoneMat = new StandardMaterial('stone', scene)
+            stoneMat.diffuseColor = SLATE_PURPLE.scale(0.5)
+            stoneMat.specularColor = BONE_WHITE.scale(0.05)
+            stoneMat.specularPower = 128
+
+            // Pillar stone — slightly lighter
+            const pillarMat = new StandardMaterial('pillarStone', scene)
+            pillarMat.diffuseColor = SLATE_PURPLE.scale(0.6)
+            pillarMat.specularColor = BONE_WHITE.scale(0.08)
+            pillarMat.specularPower = 64
+
+            // Floor — dark reflective surface
+            const floorMat = new StandardMaterial('floor', scene)
+            floorMat.diffuseColor = VOID_BLACK.scale(1.5)
+            floorMat.specularColor = BONE_WHITE.scale(0.15)
+            floorMat.specularPower = 256
+
+            // Floor grid seams — faint bone-white lines
+            const seamMat = new StandardMaterial('seam', scene)
+            seamMat.emissiveColor = BONE_WHITE.scale(0.06)
+            seamMat.disableLighting = true
+            seamMat.alpha = 0.4
+
+            // Gold emissive for pillar base lights
+            const goldGlowMat = new StandardMaterial('goldGlow', scene)
+            goldGlowMat.emissiveColor = WARM_GOLD.scale(0.7)
+            goldGlowMat.disableLighting = true
+
+            // Arch stone — subtle edge highlight
+            const archMat = new StandardMaterial('arch', scene)
+            archMat.diffuseColor = SLATE_PURPLE.scale(0.45)
+            archMat.specularColor = BONE_WHITE.scale(0.06)
+            archMat.specularPower = 64
+            archMat.emissiveColor = BONE_WHITE.scale(0.015)
+
+            // Rib vault material
+            const ribMat = new StandardMaterial('rib', scene)
+            ribMat.diffuseColor = SLATE_PURPLE.scale(0.35)
+            ribMat.specularColor = BONE_WHITE.scale(0.04)
+            ribMat.specularPower = 64
+
+            // ── Floor ───────────────────────────────────────────────
+            const floor = MeshBuilder.CreateGround('floor', {
+                width: FLOOR_SIZE, height: FLOOR_SIZE,
+            }, scene)
+            floor.material = floorMat
+            floor.receiveShadows = true
+
+            // Grid seam lines on the floor
+            const seamThickness = 0.02
+            const seamHeight = 0.005
+            const halfFloor = FLOOR_SIZE / 2
+            for (let i = -halfFloor; i <= halfFloor; i += TILE_SIZE) {
+                // Lines along Z
+                const seamZ = MeshBuilder.CreateBox(`seamZ_${i}`, {
+                    width: seamThickness, height: seamHeight, depth: FLOOR_SIZE,
+                }, scene)
+                seamZ.position.set(i, seamHeight / 2, 0)
+                seamZ.material = seamMat
+
+                // Lines along X
+                const seamX = MeshBuilder.CreateBox(`seamX_${i}`, {
+                    width: FLOOR_SIZE, height: seamHeight, depth: seamThickness,
+                }, scene)
+                seamX.position.set(0, seamHeight / 2, i)
+                seamX.material = seamMat
+            }
+
+            // ── Pointed Arch Generator ──────────────────────────────
+            // Creates a Gothic pointed arch as a tube path
+            function createPointedArchPath(width, height, segments) {
+                const points = []
+                const halfW = width / 2
+                // The arch is formed by two circular arcs meeting at a point
+                // Each arc has its center offset inward
+                const centerOffset = halfW * 0.3
+                const leftCenter = new Vector3(-centerOffset, 0, 0)
+                const rightCenter = new Vector3(centerOffset, 0, 0)
+                const radiusL = Math.sqrt((halfW - centerOffset) ** 2 + 0)
+                const radiusR = radiusL
+
+                // Calculate the peak where arcs meet
+                // Angle from left center to peak
+                const peakAngle = Math.atan2(height, centerOffset)
+
+                const halfSegs = Math.floor(segments / 2)
+
+                // Left side arc (bottom-left to peak)
+                for (let i = 0; i <= halfSegs; i++) {
+                    const t = i / halfSegs
+                    const angle = t * peakAngle
+                    const x = leftCenter.x - radiusL * Math.cos(angle)
+                    const y = leftCenter.y + radiusL * Math.sin(angle)
+                    points.push(new Vector3(x, y, 0))
+                }
+
+                // Right side arc (peak to bottom-right)
+                for (let i = halfSegs; i >= 0; i--) {
+                    const t = i / halfSegs
+                    const angle = t * peakAngle
+                    const x = rightCenter.x + radiusR * Math.cos(angle)
+                    const y = rightCenter.y + radiusR * Math.sin(angle)
+                    // Skip duplicate peak point
+                    if (i === halfSegs) continue
+                    points.push(new Vector3(x, y, 0))
+                }
+
+                return points
+            }
+
+            // Build a solid arch from an extrusion
+            function createArch(name, width, height, depth, archRadius, scene) {
+                const pathPoints = createPointedArchPath(width, height, 32)
+
+                // Create tube along the arch path
+                const arch = MeshBuilder.CreateTube(name, {
+                    path: pathPoints,
+                    radius: archRadius,
+                    tessellation: 12,
+                    cap: Mesh.CAP_ALL,
+                    updatable: false,
+                }, scene)
+                return arch
+            }
+
+            // ── Pillars ─────────────────────────────────────────────
+            const pillarBaseLights = []
+
+            for (let side = -1; side <= 1; side += 2) {
+                for (let i = 0; i < PILLAR_COUNT; i++) {
+                    const z = -i * PILLAR_SPACING + (PILLAR_COUNT * PILLAR_SPACING) / 4
+
+                    // Main pillar cylinder
+                    const pillar = MeshBuilder.CreateCylinder(`pillar_${side}_${i}`, {
+                        height: PILLAR_HEIGHT,
+                        diameter: PILLAR_RADIUS * 2,
+                        tessellation: 24,
+                    }, scene)
+                    pillar.position.set(side * PILLAR_X, PILLAR_HEIGHT / 2, z)
+                    pillar.material = pillarMat
+                    pillar.receiveShadows = true
+                    shadowGen.addShadowCaster(pillar)
+
+                    // Pillar base (wider plinth)
+                    const base = MeshBuilder.CreateCylinder(`pillarBase_${side}_${i}`, {
+                        height: 0.6,
+                        diameterTop: PILLAR_RADIUS * 2.2,
+                        diameterBottom: PILLAR_RADIUS * 2.8,
+                        tessellation: 24,
+                    }, scene)
+                    base.position.set(side * PILLAR_X, 0.3, z)
+                    base.material = stoneMat
+                    base.receiveShadows = true
+
+                    // Pillar capital (top widening)
+                    const capital = MeshBuilder.CreateCylinder(`pillarCap_${side}_${i}`, {
+                        height: 0.5,
+                        diameterTop: PILLAR_RADIUS * 2.6,
+                        diameterBottom: PILLAR_RADIUS * 2,
+                        tessellation: 24,
+                    }, scene)
+                    capital.position.set(side * PILLAR_X, PILLAR_HEIGHT - 0.25, z)
+                    capital.material = stoneMat
+
+                    // Gold glow orb at pillar base
+                    const glowOrb = MeshBuilder.CreateSphere(`glowOrb_${side}_${i}`, {
+                        diameter: 0.25,
+                        segments: 12,
+                    }, scene)
+                    glowOrb.position.set(side * PILLAR_X, 0.7, z)
+                    glowOrb.material = goldGlowMat
+
+                    // Point light at base
+                    const baseLight = new PointLight(`pillarLight_${side}_${i}`, new Vector3(
+                        side * PILLAR_X, 0.7, z,
+                    ), scene)
+                    baseLight.diffuse = WARM_GOLD.scale(0.6)
+                    baseLight.intensity = 0.8
+                    baseLight.range = 5
+                    pillarBaseLights.push(baseLight)
+                }
+            }
+
+            // ── Pointed Arches ──────────────────────────────────────
+            // Arches span between pillar pairs, towering overhead
+            const archWidth = PILLAR_X * 2
+            const archHeight = PILLAR_HEIGHT * 0.85
+
+            for (let i = 0; i < ARCH_COUNT; i++) {
+                const z = -i * ARCH_SPACING + (ARCH_COUNT * ARCH_SPACING) / 4
+
+                const arch = createArch(`arch_${i}`, archWidth, archHeight, 0.4, 0.22, scene)
+                arch.position.set(0, 0, z)
+                arch.material = archMat
+                shadowGen.addShadowCaster(arch)
+            }
+
+            // ── Ribbed Vaulting ─────────────────────────────────────
+            // Diagonal ribs crossing overhead between pillar bays
+            for (let i = 0; i < RIB_COUNT; i++) {
+                const z = -i * RIB_SPACING + (RIB_COUNT * RIB_SPACING) / 4
+
+                // Transverse rib (spans across the nave)
+                const transRibPath = createPointedArchPath(archWidth * 0.95, archHeight * 0.78, 24)
+                const transRib = MeshBuilder.CreateTube(`transRib_${i}`, {
+                    path: transRibPath,
+                    radius: 0.12,
+                    tessellation: 8,
+                    cap: Mesh.CAP_ALL,
+                }, scene)
+                transRib.position.set(0, 0, z)
+                transRib.material = ribMat
+
+                // Diagonal ribs (X-cross pattern in each bay)
+                if (i % 2 === 0 && i < RIB_COUNT - 1) {
+                    // Create diagonal rib paths
+                    const diagHeight = archHeight * 0.72
+
+                    const diagPath1 = []
+                    const diagPath2 = []
+                    const diagSegs = 20
+
+                    for (let j = 0; j <= diagSegs; j++) {
+                        const t = j / diagSegs
+                        const archT = Math.sin(t * Math.PI) // arch profile
+                        const y = archT * diagHeight * 0.7 + PILLAR_HEIGHT * 0.15
+
+                        // Diagonal 1: left-near to right-far
+                        diagPath1.push(new Vector3(
+                            -PILLAR_X * 0.85 + t * PILLAR_X * 1.7,
+                            y,
+                            z - t * RIB_SPACING,
+                        ))
+
+                        // Diagonal 2: right-near to left-far
+                        diagPath2.push(new Vector3(
+                            PILLAR_X * 0.85 - t * PILLAR_X * 1.7,
+                            y,
+                            z - t * RIB_SPACING,
+                        ))
+                    }
+
+                    const diagRib1 = MeshBuilder.CreateTube(`diagRib1_${i}`, {
+                        path: diagPath1,
+                        radius: 0.08,
+                        tessellation: 6,
+                        cap: Mesh.CAP_ALL,
+                    }, scene)
+                    diagRib1.material = ribMat
+
+                    const diagRib2 = MeshBuilder.CreateTube(`diagRib2_${i}`, {
+                        path: diagPath2,
+                        radius: 0.08,
+                        tessellation: 6,
+                        cap: Mesh.CAP_ALL,
+                    }, scene)
+                    diagRib2.material = ribMat
+                }
+            }
+
+            // ── Side Walls (implied, fading into darkness) ──────────
+            // Thin wall panels between pillars, disappearing into fog
+            const wallMat = new StandardMaterial('wall', scene)
+            wallMat.diffuseColor = SLATE_PURPLE.scale(0.25)
+            wallMat.specularColor = Color3.Black()
+
+            for (let side = -1; side <= 1; side += 2) {
+                const wallX = side * (PILLAR_X + PILLAR_RADIUS + 0.3)
+                for (let i = 0; i < PILLAR_COUNT - 1; i++) {
+                    const z1 = -i * PILLAR_SPACING + (PILLAR_COUNT * PILLAR_SPACING) / 4
+                    const z2 = -(i + 1) * PILLAR_SPACING + (PILLAR_COUNT * PILLAR_SPACING) / 4
+                    const midZ = (z1 + z2) / 2
+                    const wallDepth = Math.abs(z2 - z1) - PILLAR_RADIUS * 2
+
+                    const wall = MeshBuilder.CreateBox(`wall_${side}_${i}`, {
+                        width: 0.3,
+                        height: PILLAR_HEIGHT * 0.7,
+                        depth: wallDepth,
+                    }, scene)
+                    wall.position.set(wallX, PILLAR_HEIGHT * 0.35, midZ)
+                    wall.material = wallMat
+                    wall.receiveShadows = true
+                }
+            }
+
+            // ── Dust Mote Particles ─────────────────────────────────
+            // Slow-drifting particles caught in the main light beam
+            const dust = new ParticleSystem('dust', 600, scene)
+
+            // Procedural soft circle texture
+            const texSize = 32
+            const texData = new Uint8Array(texSize * texSize * 4)
+            const mid = (texSize - 1) / 2
+            for (let y = 0; y < texSize; y++) {
+                for (let x = 0; x < texSize; x++) {
+                    const dx = (x - mid) / mid
+                    const dy = (y - mid) / mid
+                    const a = Math.max(0, Math.exp(-(dx * dx + dy * dy) * 3))
+                    const idx = (y * texSize + x) * 4
+                    texData[idx] = 255
+                    texData[idx + 1] = 240
+                    texData[idx + 2] = 200
+                    texData[idx + 3] = Math.round(a * 255)
+                }
+            }
+            dust.particleTexture = new RawTexture(
+                texData, texSize, texSize,
+                Constants.TEXTUREFORMAT_RGBA, scene, false, false,
+            )
+
+            // Emitter: a box region covering the nave interior,
+            // concentrated near the light beam area
+            dust.createBoxEmitter(
+                new Vector3(-0.002, 0.001, -0.002),  // direction1
+                new Vector3(0.002, 0.003, 0.002),    // direction2
+                new Vector3(-5, 1, -15),              // minEmitBox
+                new Vector3(5, 14, 15),               // maxEmitBox
+            )
+            dust.emitter = new Vector3(0, 0, 3)
+
+            dust.minSize = 0.02
+            dust.maxSize = 0.07
+            dust.minLifeTime = 12
+            dust.maxLifeTime = 25
+            dust.emitRate = 40
+            dust.color1 = new Color4(
+                WARM_GOLD.r, WARM_GOLD.g, WARM_GOLD.b, 0.35,
+            )
+            dust.color2 = new Color4(
+                BONE_WHITE.r, BONE_WHITE.g, BONE_WHITE.b, 0.2,
+            )
+            dust.colorDead = new Color4(
+                DEEP_INDIGO.r, DEEP_INDIGO.g, DEEP_INDIGO.b, 0,
+            )
+            dust.minEmitPower = 0.001
+            dust.maxEmitPower = 0.005
+            dust.gravity = new Vector3(0, 0.0005, 0)
+            dust.blendMode = ParticleSystem.BLENDMODE_ADD
+            dust.start()
+
+            // ── Animated Light Beam Haze ────────────────────────────
+            // A subtle volumetric cone suggested by semi-transparent geometry
+            // placed in the path of the directional light
+            const beamMat = new StandardMaterial('beam', scene)
+            beamMat.emissiveColor = WARM_GOLD.scale(0.12)
+            beamMat.disableLighting = true
+            beamMat.alpha = 0.06
+
+            const beam = MeshBuilder.CreateCylinder('beam', {
+                height: 24,
+                diameterTop: 2,
+                diameterBottom: 14,
+                tessellation: 16,
+            }, scene)
+            beam.position.set(1, 12, 6)
+            beam.rotation.x = 0.15
+            beam.rotation.z = -0.08
+            beam.material = beamMat
+
+            // Second, wider beam for atmosphere
+            const beam2Mat = new StandardMaterial('beam2', scene)
+            beam2Mat.emissiveColor = WARM_GOLD.scale(0.06)
+            beam2Mat.disableLighting = true
+            beam2Mat.alpha = 0.035
+
+            const beam2 = MeshBuilder.CreateCylinder('beam2', {
+                height: 22,
+                diameterTop: 4,
+                diameterBottom: 18,
+                tessellation: 16,
+            }, scene)
+            beam2.position.set(1, 11, 6)
+            beam2.rotation.x = 0.15
+            beam2.rotation.z = -0.08
+            beam2.material = beam2Mat
+
+            // ── Pillar Base Glow Halos ──────────────────────────────
+            // Flat discs on the floor around each pillar base light
+            const haloMat = new StandardMaterial('halo', scene)
+            haloMat.emissiveColor = WARM_GOLD.scale(0.25)
+            haloMat.disableLighting = true
+            haloMat.alpha = 0.15
+
+            for (let side = -1; side <= 1; side += 2) {
+                for (let i = 0; i < PILLAR_COUNT; i++) {
+                    const z = -i * PILLAR_SPACING + (PILLAR_COUNT * PILLAR_SPACING) / 4
+                    const halo = MeshBuilder.CreateDisc(`halo_${side}_${i}`, {
+                        radius: 1.5,
+                        tessellation: 24,
+                    }, scene)
+                    halo.position.set(side * PILLAR_X, 0.02, z)
+                    halo.rotation.x = Math.PI / 2
+                    halo.material = haloMat
+                }
+            }
+
+            // ── Slow Animation ──────────────────────────────────────
+            // Gentle pulsing of pillar base lights and glow orbs
+            let time = 0
+
+            scene.registerBeforeRender(() => {
+                const dt = engine.getDeltaTime() / 1000
+                time += dt
+
+                // Gently pulse each pillar base light
+                for (let i = 0; i < pillarBaseLights.length; i++) {
+                    const phase = i * 0.4
+                    const pulse = 0.7 + 0.3 * Math.sin(time * 0.5 + phase)
+                    pillarBaseLights[i].intensity = 0.8 * pulse
+                }
+
+                // Slowly drift the beam transparency
+                const beamPulse = 0.06 + 0.015 * Math.sin(time * 0.3)
+                beamMat.alpha = beamPulse
+
+                // Very slow fog density shift
+                scene.fogDensity = 0.035 + 0.003 * Math.sin(time * 0.15)
+            })
+
+            // ── WebXR ───────────────────────────────────────────────
+            await WebXRDefaultExperience.CreateAsync(scene, {
+                uiOptions: { sessionMode: 'immersive-vr' },
+                disableTeleportation: true,
+            }).catch(console.error)
+
+            // ── Render Loop ─────────────────────────────────────────
+            engine.runRenderLoop(() => scene.render())
+            window.addEventListener('resize', () => engine.resize())
+        </script>
+    </body>
+</html>

@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Lobby: Equalizer Stage</title>
+        <style>
+            * { margin: 0; padding: 0; }
+            canvas { width: 100vw; height: 100vh; display: block; }
+        </style>
+    </head>
+    <body>
+        <canvas id="canvas"></canvas>
+        <script type="module">
+            import { Engine } from '@babylonjs/core/Engines/engine'
+            import { Scene } from '@babylonjs/core/scene'
+            import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera'
+            import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight'
+            import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
+            import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
+            import { GlowLayer } from '@babylonjs/core/Layers/glowLayer'
+            import { Vector3, Color3, Color4 } from '@babylonjs/core/Maths/math'
+            import { WebXRDefaultExperience } from '@babylonjs/core/XR/webXRDefaultExperience'
+            import '@babylonjs/core/Helpers/sceneHelpers'
+
+            // ── Palette ──────────────────────────────────────────
+            const RED = Color3.FromHexString('#ff2244')
+            const BLUE = Color3.FromHexString('#0088ff')
+            const PURPLE = Color3.FromHexString('#8800cc')
+            const DIM_BLUE = Color3.FromHexString('#001133')
+
+            // ── Engine + Scene ───────────────────────────────────
+            const canvas = document.getElementById('canvas')
+            const engine = new Engine(canvas, true, { stencil: true })
+            const scene = new Scene(engine)
+            scene.clearColor = new Color4(0, 0, 0, 1)
+
+            // Fog — fade distant geometry into black
+            scene.fogMode = Scene.FOGMODE_EXP2
+            scene.fogDensity = 0.02
+            scene.fogColor = new Color3(0, 0, 0)
+
+            // ── Camera ───────────────────────────────────────────
+            const camera = new FreeCamera('cam', new Vector3(0, 1.6, 3), scene)
+            camera.setTarget(new Vector3(0, 1.6, 0))
+            camera.attachControl()
+            camera.minZ = 0.1
+
+            // ── Dim ambient ──────────────────────────────────────
+            const ambient = new HemisphericLight('ambient', new Vector3(0, 1, 0), scene)
+            ambient.intensity = 0.02
+            ambient.diffuse = DIM_BLUE
+            ambient.groundColor = new Color3(0, 0, 0)
+            ambient.specular = Color3.Black()
+
+            // ── Glow Layer ───────────────────────────────────────
+            const glow = new GlowLayer('glow', scene, {
+                mainTextureSamples: 4,
+                blurKernelSize: 64,
+            })
+            glow.intensity = 1.2
+
+            // ── Helper: emissive material ────────────────────────
+            function emissiveMat(name, color) {
+                const mat = new StandardMaterial(name, scene)
+                mat.emissiveColor = color
+                mat.disableLighting = true
+                return mat
+            }
+
+            // ── Floor ────────────────────────────────────────────
+            // Dark reflective-looking platform extending forward
+            const FLOOR_WIDTH = 16
+            const FLOOR_DEPTH = 60
+            const floor = MeshBuilder.CreateBox('floor', {
+                width: FLOOR_WIDTH, height: 0.05, depth: FLOOR_DEPTH,
+            }, scene)
+            floor.position = new Vector3(0, -0.025, -FLOOR_DEPTH / 2 + 5)
+            const floorMat = new StandardMaterial('floorMat', scene)
+            floorMat.diffuseColor = new Color3(0.015, 0.015, 0.02)
+            floorMat.specularColor = new Color3(0.15, 0.15, 0.2)
+            floorMat.specularPower = 64
+            floor.material = floorMat
+
+            // ── Lane strips ──────────────────────────────────────
+            // Two neon lane lines: red left, blue right
+            const LANE_STRIP_HEIGHT = 0.02
+            const LANE_STRIP_WIDTH = 0.04
+            const LANE_OFFSET_X = 0.8
+            const LANE_DEPTH = 50
+
+            const laneStripL = MeshBuilder.CreateBox('laneL', {
+                width: LANE_STRIP_WIDTH, height: LANE_STRIP_HEIGHT, depth: LANE_DEPTH,
+            }, scene)
+            laneStripL.position = new Vector3(-LANE_OFFSET_X, 0.012, -LANE_DEPTH / 2 + 5)
+            laneStripL.material = emissiveMat('laneLMat', RED.scale(0.9))
+
+            const laneStripR = MeshBuilder.CreateBox('laneR', {
+                width: LANE_STRIP_WIDTH, height: LANE_STRIP_HEIGHT, depth: LANE_DEPTH,
+            }, scene)
+            laneStripR.position = new Vector3(LANE_OFFSET_X, 0.012, -LANE_DEPTH / 2 + 5)
+            laneStripR.material = emissiveMat('laneRMat', BLUE.scale(0.9))
+
+            // ── Player platform ──────────────────────────────────
+            // Subtle raised hexagonal-ish area where the player stands
+            const platformRing = MeshBuilder.CreateTorus('platformRing', {
+                diameter: 3.0,
+                thickness: 0.03,
+                tessellation: 64,
+            }, scene)
+            platformRing.position = new Vector3(0, 0.01, 2.5)
+            platformRing.rotation.x = Math.PI / 2
+            platformRing.material = emissiveMat('platformRingMat', PURPLE.scale(0.4))
+
+            // Inner ring
+            const platformRingInner = MeshBuilder.CreateTorus('platformRingInner', {
+                diameter: 1.8,
+                thickness: 0.02,
+                tessellation: 48,
+            }, scene)
+            platformRingInner.position = new Vector3(0, 0.01, 2.5)
+            platformRingInner.rotation.x = Math.PI / 2
+            platformRingInner.material = emissiveMat('platformRingInnerMat', PURPLE.scale(0.2))
+
+            // ── Equalizer bars ───────────────────────────────────
+            // Semicircle arc of thin vertical bars behind the player
+            const BAR_COUNT = 60
+            const ARC_RADIUS_MIN = 6
+            const ARC_RADIUS_MAX = 10
+            const ARC_START_ANGLE = Math.PI * 0.15  // ~27 degrees from front-left
+            const ARC_END_ANGLE = Math.PI * 0.85    // ~153 degrees (semicircle behind)
+            const BAR_WIDTH = 0.08
+            const BAR_DEPTH = 0.08
+            const BAR_MAX_HEIGHT = 5.0
+            const BAR_MIN_HEIGHT = 0.3
+            const BAR_ROWS = 3  // multiple rows of depth
+
+            /** Interpolate from RED through PURPLE to BLUE based on t [0..1] */
+            function eqColor(t) {
+                if (t < 0.5) {
+                    // Red → Purple
+                    const u = t * 2
+                    return Color3.Lerp(RED, PURPLE, u)
+                }
+                // Purple → Blue
+                const u = (t - 0.5) * 2
+                return Color3.Lerp(PURPLE, BLUE, u)
+            }
+
+            // Store bar references for animation
+            const bars = []
+
+            for (let row = 0; row < BAR_ROWS; row++) {
+                const radius = ARC_RADIUS_MIN + row * ((ARC_RADIUS_MAX - ARC_RADIUS_MIN) / (BAR_ROWS - 1))
+                const rowFade = 1.0 - row * 0.25  // farther rows dimmer
+
+                for (let i = 0; i < BAR_COUNT; i++) {
+                    const t = i / (BAR_COUNT - 1)
+                    const angle = ARC_START_ANGLE + t * (ARC_END_ANGLE - ARC_START_ANGLE)
+
+                    // Position on arc (centered behind player at z=2.5)
+                    const x = Math.cos(angle) * radius
+                    const z = 2.5 - Math.sin(angle) * radius
+
+                    const baseHeight = BAR_MIN_HEIGHT + Math.random() * 0.5
+                    const bar = MeshBuilder.CreateBox(`bar_${row}_${i}`, {
+                        width: BAR_WIDTH,
+                        height: baseHeight,
+                        depth: BAR_DEPTH,
+                    }, scene)
+                    bar.position = new Vector3(x, baseHeight / 2, z)
+
+                    const color = eqColor(t).scale(0.7 * rowFade)
+                    bar.material = emissiveMat(`barMat_${row}_${i}`, color)
+
+                    // Each bar gets unique animation parameters
+                    const freq = 0.5 + Math.random() * 2.5      // oscillation speed
+                    const phase = Math.random() * Math.PI * 2    // offset
+                    const ampScale = 0.3 + Math.random() * 0.7   // amplitude variation
+                    const baseColor = eqColor(t).scale(rowFade)
+
+                    bars.push({
+                        mesh: bar,
+                        freq,
+                        phase,
+                        ampScale,
+                        baseColor,
+                        row,
+                    })
+                }
+            }
+
+            // ── Equalizer reflection bars ────────────────────────
+            // Faint mirrored bars below the floor for reflection effect
+            const reflectionBars = []
+
+            for (const barInfo of bars) {
+                if (barInfo.row > 0) continue  // only reflect front row
+
+                const refBar = MeshBuilder.CreateBox(`ref_${barInfo.mesh.name}`, {
+                    width: BAR_WIDTH,
+                    height: BAR_MIN_HEIGHT,
+                    depth: BAR_DEPTH,
+                }, scene)
+                // Position mirrored below floor
+                refBar.position = new Vector3(
+                    barInfo.mesh.position.x,
+                    -BAR_MIN_HEIGHT / 2 - 0.05,
+                    barInfo.mesh.position.z,
+                )
+                const refMat = new StandardMaterial(`refMat_${barInfo.mesh.name}`, scene)
+                refMat.emissiveColor = barInfo.baseColor.scale(0.15)
+                refMat.disableLighting = true
+                refMat.alpha = 0.3
+                refBar.material = refMat
+
+                reflectionBars.push({
+                    mesh: refBar,
+                    source: barInfo,
+                    mat: refMat,
+                })
+            }
+
+            // ── Floor grid lines ─────────────────────────────────
+            // Subtle grid on the floor for depth perception
+            const GRID_LINE_COUNT = 20
+            const GRID_SPACING = 3.0
+            const GRID_LINE_WIDTH = 0.015
+
+            for (let i = 0; i < GRID_LINE_COUNT; i++) {
+                const z = 5 - i * GRID_SPACING
+                const fade = Math.max(0.05, 1.0 - i / GRID_LINE_COUNT)
+
+                // Horizontal grid line
+                const hLine = MeshBuilder.CreateBox(`gridH_${i}`, {
+                    width: FLOOR_WIDTH, height: 0.005, depth: GRID_LINE_WIDTH,
+                }, scene)
+                hLine.position = new Vector3(0, 0.003, z)
+                hLine.material = emissiveMat(`gridHMat_${i}`, PURPLE.scale(0.08 * fade))
+            }
+
+            // ── Side accent pillars ──────────────────────────────
+            // Tall thin neon pillars framing the stage
+            const PILLAR_POSITIONS = [
+                { x: -3.5, z: 1, color: RED },
+                { x: 3.5, z: 1, color: BLUE },
+                { x: -4.5, z: -3, color: RED },
+                { x: 4.5, z: -3, color: BLUE },
+                { x: -5.5, z: -8, color: RED },
+                { x: 5.5, z: -8, color: BLUE },
+            ]
+
+            for (let i = 0; i < PILLAR_POSITIONS.length; i++) {
+                const p = PILLAR_POSITIONS[i]
+                const height = 6 + Math.random() * 3
+                const pillar = MeshBuilder.CreateBox(`pillar_${i}`, {
+                    width: 0.05, height, depth: 0.05,
+                }, scene)
+                pillar.position = new Vector3(p.x, height / 2, p.z)
+                pillar.material = emissiveMat(`pillarMat_${i}`, p.color.scale(0.35))
+
+                // Small cap at top
+                const cap = MeshBuilder.CreateBox(`pillarCap_${i}`, {
+                    width: 0.15, height: 0.04, depth: 0.15,
+                }, scene)
+                cap.position = new Vector3(p.x, height, p.z)
+                cap.material = emissiveMat(`pillarCapMat_${i}`, p.color.scale(0.5))
+            }
+
+            // ── Overhead frame ───────────────────────────────────
+            // Thin neon arcs overhead connecting left and right
+            const OVERHEAD_COUNT = 4
+            for (let i = 0; i < OVERHEAD_COUNT; i++) {
+                const z = 2 - i * 4
+                const fade = Math.max(0.15, 1.0 - i / OVERHEAD_COUNT)
+
+                const archBar = MeshBuilder.CreateBox(`arch_${i}`, {
+                    width: 8, height: 0.025, depth: 0.025,
+                }, scene)
+                archBar.position = new Vector3(0, 7 + Math.sin(i) * 0.5, z)
+                archBar.material = emissiveMat(`archMat_${i}`, PURPLE.scale(0.2 * fade))
+            }
+
+            // ── Floating particles (neon dots) ───────────────────
+            // Scattered static neon dots to fill the void
+            const DOT_COUNT = 80
+            const dots = []
+
+            for (let i = 0; i < DOT_COUNT; i++) {
+                const dot = MeshBuilder.CreateBox(`dot_${i}`, {
+                    width: 0.03, height: 0.03, depth: 0.03,
+                }, scene)
+
+                // Distribute in a wide volume behind and around player
+                const angle = Math.random() * Math.PI * 2
+                const radius = 3 + Math.random() * 12
+                const x = Math.cos(angle) * radius
+                const z = 2.5 - Math.abs(Math.sin(angle)) * radius
+                const y = 0.5 + Math.random() * 8
+
+                dot.position = new Vector3(x, y, z)
+
+                // Color based on x position (left=red, right=blue)
+                const colorT = (x / radius + 1) * 0.5  // 0..1
+                const dotColor = eqColor(colorT).scale(0.2 + Math.random() * 0.3)
+                dot.material = emissiveMat(`dotMat_${i}`, dotColor)
+
+                dots.push({
+                    mesh: dot,
+                    baseY: y,
+                    driftSpeed: 0.1 + Math.random() * 0.3,
+                    driftPhase: Math.random() * Math.PI * 2,
+                    driftAmp: 0.1 + Math.random() * 0.2,
+                })
+            }
+
+            // ── Animation ────────────────────────────────────────
+            let time = 0
+
+            scene.registerBeforeRender(() => {
+                const dt = engine.getDeltaTime() / 1000
+                time += dt
+
+                // Animate equalizer bars
+                for (const barInfo of bars) {
+                    // Layered sine waves for organic movement
+                    const wave1 = Math.sin(time * barInfo.freq + barInfo.phase)
+                    const wave2 = Math.sin(time * barInfo.freq * 0.7 + barInfo.phase * 1.3) * 0.5
+                    const wave3 = Math.sin(time * 0.3 + barInfo.phase * 0.5) * 0.3
+                    const combined = (wave1 + wave2 + wave3) * 0.5 + 0.5  // normalize to 0..1
+
+                    const height = BAR_MIN_HEIGHT + combined * barInfo.ampScale * (BAR_MAX_HEIGHT - BAR_MIN_HEIGHT)
+                    const mesh = barInfo.mesh
+
+                    // Scale Y and reposition so bar grows from floor
+                    mesh.scaling.y = height / BAR_MIN_HEIGHT
+                    mesh.position.y = height / 2
+
+                    // Pulse brightness with height
+                    const brightness = 0.3 + combined * 0.7
+                    mesh.material.emissiveColor = barInfo.baseColor.scale(brightness * 0.7)
+                }
+
+                // Animate reflection bars
+                for (const ref of reflectionBars) {
+                    const srcHeight = ref.source.mesh.position.y * 2  // actual bar height
+                    ref.mesh.scaling.y = ref.source.mesh.scaling.y * 0.6
+                    ref.mesh.position.y = -(srcHeight * 0.6) / 2 - 0.05
+
+                    // Match color but dimmer
+                    const srcColor = ref.source.mesh.material.emissiveColor
+                    ref.mat.emissiveColor = new Color3(
+                        srcColor.r * 0.15,
+                        srcColor.g * 0.15,
+                        srcColor.b * 0.15,
+                    )
+                }
+
+                // Animate floating dots (gentle drift)
+                for (const dot of dots) {
+                    dot.mesh.position.y = dot.baseY + Math.sin(time * dot.driftSpeed + dot.driftPhase) * dot.driftAmp
+                }
+            })
+
+            // ── WebXR ────────────────────────────────────────────
+            await WebXRDefaultExperience.CreateAsync(scene, {
+                uiOptions: { sessionMode: 'immersive-vr' },
+                disableTeleportation: true,
+            }).catch(console.error)
+
+            // ── Run ──────────────────────────────────────────────
+            engine.runRenderLoop(() => scene.render())
+            window.addEventListener('resize', () => engine.resize())
+        </script>
+    </body>
+</html>

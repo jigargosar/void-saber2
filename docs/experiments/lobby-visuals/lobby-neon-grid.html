@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Lobby: Neon Grid</title>
+        <style>
+            * { margin: 0; padding: 0; }
+            canvas { width: 100vw; height: 100vh; display: block; }
+        </style>
+    </head>
+    <body>
+        <canvas id="canvas"></canvas>
+        <script type="module">
+            import { Engine } from '@babylonjs/core/Engines/engine'
+            import { Scene } from '@babylonjs/core/scene'
+            import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera'
+            import { Vector3, Color3, Color4 } from '@babylonjs/core/Maths/math'
+            import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
+            import { Mesh } from '@babylonjs/core/Meshes/mesh'
+            import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData'
+            import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
+            import { ShaderMaterial } from '@babylonjs/core/Materials/shaderMaterial'
+            import { Effect } from '@babylonjs/core/Materials/effect'
+            import { GlowLayer } from '@babylonjs/core/Layers/glowLayer'
+            import { ParticleSystem } from '@babylonjs/core/Particles/particleSystem'
+            import { RawTexture } from '@babylonjs/core/Materials/Textures/rawTexture'
+            import { Constants } from '@babylonjs/core/Engines/constants'
+            import { WebXRDefaultExperience } from '@babylonjs/core/XR/webXRDefaultExperience'
+
+            import '@babylonjs/core/Helpers/sceneHelpers'
+
+            // ── Colors ────────────────────────────────────────────────
+
+            const CYAN = new Color3(0, 0.94, 1)         // #00f0ff
+            const MAGENTA = new Color3(1, 0, 0.67)      // #ff00aa
+            const WHITE = new Color3(1, 1, 1)
+            const BLACK = new Color4(0, 0, 0, 1)
+
+            // ── Engine + Scene ────────────────────────────────────────
+
+            const canvas = document.getElementById('canvas')
+            const engine = new Engine(canvas, true, { stencil: true })
+            const scene = new Scene(engine)
+            scene.clearColor = BLACK
+
+            const camera = new FreeCamera('cam', new Vector3(0, 1.6, 3), scene)
+            camera.setTarget(new Vector3(0, 1.6, 0))
+            camera.attachControl()
+
+            // ── Glow Layer ────────────────────────────────────────────
+
+            const glow = new GlowLayer('glow', scene, {
+                mainTextureSamples: 4,
+                blurKernelSize: 64,
+            })
+            glow.intensity = 1.5
+            glow.customEmissiveColorSelector = (mesh, _subMesh, _material, result) => {
+                if (mesh.material instanceof StandardMaterial) {
+                    const ec = mesh.material.emissiveColor
+                    result.set(ec.r, ec.g, ec.b, 1)
+                } else {
+                    result.set(0, 0, 0, 0)
+                }
+            }
+
+            // ── Neon Grid (ShaderMaterial) ────────────────────────────
+
+            Effect.ShadersStore['neonGridVertexShader'] = `
+                precision highp float;
+                attribute vec3 position;
+                uniform mat4 worldViewProjection;
+                uniform mat4 world;
+                varying vec3 vWorldPos;
+                void main() {
+                    vec4 wp = world * vec4(position, 1.0);
+                    vWorldPos = wp.xyz;
+                    gl_Position = worldViewProjection * vec4(position, 1.0);
+                }
+            `
+
+            Effect.ShadersStore['neonGridFragmentShader'] = `
+                precision highp float;
+                varying vec3 vWorldPos;
+                uniform float time;
+                uniform vec3 cyanColor;
+                uniform vec3 magentaColor;
+
+                void main() {
+                    float gridSpacing = 2.0;
+                    float lineWidth = 0.04;
+
+                    // Grid coordinates
+                    float gx = abs(fract(vWorldPos.x / gridSpacing + 0.5) - 0.5) * gridSpacing;
+                    float gz = abs(fract(vWorldPos.z / gridSpacing + 0.5) - 0.5) * gridSpacing;
+
+                    // Anti-aliased grid lines
+                    float dxLine = 1.0 - smoothstep(0.0, lineWidth, gx);
+                    float dzLine = 1.0 - smoothstep(0.0, lineWidth, gz);
+                    float gridLine = max(dxLine, dzLine);
+
+                    // Scanline effect — alternating line brightness based on z
+                    float scanline = 0.6 + 0.4 * step(0.5, fract(vWorldPos.z / gridSpacing));
+
+                    // Intersection dots — bright white at crossings
+                    float intersection = dxLine * dzLine;
+                    float dotIntensity = smoothstep(0.3, 1.0, intersection);
+
+                    // Alternate primary/accent colors per row
+                    float rowIndex = floor(vWorldPos.z / gridSpacing);
+                    float isMagenta = step(0.5, fract(rowIndex * 0.25));
+                    vec3 lineColor = mix(cyanColor, magentaColor, isMagenta);
+
+                    // Distance fade — infinite feeling
+                    float dist = length(vWorldPos.xz);
+                    float fade = 1.0 - smoothstep(20.0, 80.0, dist);
+
+                    // Subtle pulse
+                    float pulse = 0.9 + 0.1 * sin(time * 0.8);
+
+                    vec3 color = lineColor * gridLine * scanline * pulse * fade;
+                    color += vec3(1.0) * dotIntensity * fade * 1.5;
+
+                    float alpha = gridLine * fade;
+
+                    gl_FragColor = vec4(color, alpha);
+                }
+            `
+
+            const gridMat = new ShaderMaterial('gridMat', scene, {
+                vertex: 'neonGrid',
+                fragment: 'neonGrid',
+            }, {
+                attributes: ['position'],
+                uniforms: ['worldViewProjection', 'world', 'time', 'cyanColor', 'magentaColor'],
+                needAlphaBlending: true,
+            })
+            gridMat.setColor3('cyanColor', CYAN)
+            gridMat.setColor3('magentaColor', MAGENTA)
+            gridMat.setFloat('time', 0)
+            gridMat.backFaceCulling = false
+            gridMat.alphaMode = Constants.ALPHA_ADD
+
+            const gridPlane = MeshBuilder.CreateGround('grid', {
+                width: 200,
+                height: 200,
+                subdivisions: 1,
+            }, scene)
+            gridPlane.material = gridMat
+            gridPlane.position.y = 0
+
+            // ── Horizon Glow Strip ────────────────────────────────────
+
+            const horizonMat = new StandardMaterial('horizonMat', scene)
+            horizonMat.emissiveColor = CYAN.scale(0.8)
+            horizonMat.disableLighting = true
+            horizonMat.alpha = 0.6
+
+            // Thin bright strip at horizon distance
+            const horizonStrip = MeshBuilder.CreatePlane('horizonStrip', {
+                width: 200,
+                height: 0.15,
+            }, scene)
+            horizonStrip.position.set(0, 0.07, -100)
+            horizonStrip.material = horizonMat
+
+            // Second strip facing opposite direction
+            const horizonStrip2 = MeshBuilder.CreatePlane('horizonStrip2', {
+                width: 200,
+                height: 0.15,
+            }, scene)
+            horizonStrip2.position.set(0, 0.07, 100)
+            horizonStrip2.rotation.y = Math.PI
+            horizonStrip2.material = horizonMat
+
+            // Side horizons
+            const horizonStripL = MeshBuilder.CreatePlane('horizonStripL', {
+                width: 200,
+                height: 0.15,
+            }, scene)
+            horizonStripL.position.set(-100, 0.07, 0)
+            horizonStripL.rotation.y = Math.PI / 2
+            horizonStripL.material = horizonMat
+
+            const horizonStripR = MeshBuilder.CreatePlane('horizonStripR', {
+                width: 200,
+                height: 0.15,
+            }, scene)
+            horizonStripR.position.set(100, 0.07, 0)
+            horizonStripR.rotation.y = -Math.PI / 2
+            horizonStripR.material = horizonMat
+
+            // Upward glow bleed — taller, more transparent
+            const horizonGlowMat = new StandardMaterial('horizonGlowMat', scene)
+            horizonGlowMat.emissiveColor = CYAN.scale(0.3)
+            horizonGlowMat.disableLighting = true
+            horizonGlowMat.alpha = 0.15
+
+            const horizonGlow = MeshBuilder.CreatePlane('horizonGlow', {
+                width: 200,
+                height: 3,
+            }, scene)
+            horizonGlow.position.set(0, 1.5, -100)
+            horizonGlow.material = horizonGlowMat
+
+            const horizonGlow2 = MeshBuilder.CreatePlane('horizonGlow2', {
+                width: 200,
+                height: 3,
+            }, scene)
+            horizonGlow2.position.set(0, 1.5, 100)
+            horizonGlow2.rotation.y = Math.PI
+            horizonGlow2.material = horizonGlowMat
+
+            // ── Wireframe Columns at Grid Intersections ───────────────
+
+            const GRID_SPACING = 2.0
+            const COLUMN_RADIUS = 12      // how far from center columns appear
+            const MIN_HEIGHT = 4.8        // 3x player height
+            const MAX_HEIGHT = 19.2       // 12x player height
+
+            // Seeded random for deterministic placement
+            function seededRandom(seed) {
+                let s = seed
+                return function () {
+                    s = (s * 16807 + 0) % 2147483647
+                    return s / 2147483647
+                }
+            }
+
+            const rng = seededRandom(42)
+
+            // Create wireframe box geometry (edges only)
+            function createWireframeBox(name, width, height, depth, scene) {
+                const hw = width / 2
+                const hh = height / 2
+                const hd = depth / 2
+
+                // 8 corners
+                const corners = [
+                    new Vector3(-hw, -hh, -hd), // 0
+                    new Vector3( hw, -hh, -hd), // 1
+                    new Vector3( hw, -hh,  hd), // 2
+                    new Vector3(-hw, -hh,  hd), // 3
+                    new Vector3(-hw,  hh, -hd), // 4
+                    new Vector3( hw,  hh, -hd), // 5
+                    new Vector3( hw,  hh,  hd), // 6
+                    new Vector3(-hw,  hh,  hd), // 7
+                ]
+
+                // 12 edges as line segments
+                const lines = [
+                    // bottom face
+                    [corners[0], corners[1]],
+                    [corners[1], corners[2]],
+                    [corners[2], corners[3]],
+                    [corners[3], corners[0]],
+                    // top face
+                    [corners[4], corners[5]],
+                    [corners[5], corners[6]],
+                    [corners[6], corners[7]],
+                    [corners[7], corners[4]],
+                    // verticals
+                    [corners[0], corners[4]],
+                    [corners[1], corners[5]],
+                    [corners[2], corners[6]],
+                    [corners[3], corners[7]],
+                ]
+
+                return MeshBuilder.CreateLineSystem(name, { lines }, scene)
+            }
+
+            // Place columns at grid intersections in mid-distance
+            const columns = []
+
+            for (let gx = -6; gx <= 6; gx++) {
+                for (let gz = -6; gz <= 6; gz++) {
+                    const wx = gx * GRID_SPACING
+                    const wz = gz * GRID_SPACING
+                    const dist = Math.sqrt(wx * wx + wz * wz)
+
+                    // Only place in mid-distance ring, skip near player
+                    if (dist < COLUMN_RADIUS || dist > COLUMN_RADIUS + 16) continue
+
+                    // Random chance to place a column (sparse)
+                    if (rng() > 0.3) continue
+
+                    const height = MIN_HEIGHT + rng() * (MAX_HEIGHT - MIN_HEIGHT)
+                    const boxWidth = 0.3 + rng() * 0.5
+                    const boxDepth = 0.3 + rng() * 0.5
+
+                    // Choose cyan or magenta
+                    const isMagenta = rng() > 0.65
+                    const color = isMagenta
+                        ? new Color3(MAGENTA.r * 0.7, MAGENTA.g * 0.7, MAGENTA.b * 0.7)
+                        : new Color3(CYAN.r * 0.6, CYAN.g * 0.6, CYAN.b * 0.6)
+
+                    const col = createWireframeBox(
+                        `col_${gx}_${gz}`,
+                        boxWidth,
+                        height,
+                        boxDepth,
+                        scene,
+                    )
+                    col.position.set(wx, height / 2, wz)
+                    col.color = color
+                    col.isPickable = false
+
+                    // Store for animation
+                    const rotSpeed = 0.05 + rng() * 0.15
+                    const rotDir = rng() > 0.5 ? 1 : -1
+                    columns.push({ mesh: col, rotSpeed, rotDir })
+                }
+            }
+
+            // ── Intersection Dots ─────────────────────────────────────
+            // Emissive spheres at grid intersections near the player
+
+            const dotMat = new StandardMaterial('dotMat', scene)
+            dotMat.emissiveColor = WHITE
+            dotMat.disableLighting = true
+
+            const DOT_RANGE = 20
+            for (let gx = -10; gx <= 10; gx++) {
+                for (let gz = -10; gz <= 10; gz++) {
+                    const wx = gx * GRID_SPACING
+                    const wz = gz * GRID_SPACING
+                    const dist = Math.sqrt(wx * wx + wz * wz)
+                    if (dist > DOT_RANGE) continue
+
+                    const dot = MeshBuilder.CreateSphere(
+                        `dot_${gx}_${gz}`,
+                        { diameter: 0.06, segments: 6 },
+                        scene,
+                    )
+                    dot.position.set(wx, 0.01, wz)
+                    dot.material = dotMat
+                    dot.isPickable = false
+                }
+            }
+
+            // ── Drifting Particles ────────────────────────────────────
+            // White points rising from random grid intersections
+
+            const particles = new ParticleSystem('gridParticles', 600, scene)
+
+            // Create a soft circular particle texture
+            const texSize = 32
+            const texData = new Uint8Array(texSize * texSize * 4)
+            const mid = (texSize - 1) / 2
+            for (let y = 0; y < texSize; y++) {
+                for (let x = 0; x < texSize; x++) {
+                    const dx = (x - mid) / mid
+                    const dy = (y - mid) / mid
+                    const a = Math.max(0, Math.exp(-(dx * dx + dy * dy) * 4))
+                    const idx = (y * texSize + x) * 4
+                    texData[idx] = 255
+                    texData[idx + 1] = 255
+                    texData[idx + 2] = 255
+                    texData[idx + 3] = Math.round(a * 255)
+                }
+            }
+            particles.particleTexture = new RawTexture(
+                texData, texSize, texSize,
+                Constants.TEXTUREFORMAT_RGBA, scene, false, false,
+            )
+
+            // Emit from a wide flat area at ground level
+            particles.createBoxEmitter(
+                new Vector3(-0.01, 0.3, -0.01),   // direction1 (upward drift)
+                new Vector3(0.01, 0.5, 0.01),      // direction2
+                new Vector3(-20, 0, -20),           // minEmitBox
+                new Vector3(20, 0.1, 20),           // maxEmitBox
+            )
+            particles.emitter = Vector3.Zero()
+
+            particles.minSize = 0.015
+            particles.maxSize = 0.04
+            particles.minLifeTime = 3
+            particles.maxLifeTime = 6
+            particles.emitRate = 80
+
+            particles.color1 = new Color4(1, 1, 1, 0.8)
+            particles.color2 = new Color4(0.7, 0.95, 1, 0.6)
+            particles.colorDead = new Color4(0, 0.3, 0.5, 0)
+
+            particles.minEmitPower = 0.2
+            particles.maxEmitPower = 0.5
+            particles.gravity = new Vector3(0, 0.05, 0) // gentle upward
+
+            particles.blendMode = ParticleSystem.BLENDMODE_ADD
+            particles.start()
+
+            // ── Extra Accent: Vertical Scan Lines ─────────────────────
+            // Thin vertical emissive planes that slowly sweep across the grid
+
+            const scanMat = new StandardMaterial('scanMat', scene)
+            scanMat.emissiveColor = CYAN.scale(0.15)
+            scanMat.disableLighting = true
+            scanMat.alpha = 0.08
+
+            const scanLines = []
+            for (let i = 0; i < 3; i++) {
+                const scanPlane = MeshBuilder.CreatePlane(`scan_${i}`, {
+                    width: 0.03,
+                    height: 40,
+                }, scene)
+                scanPlane.position.set(-30 + i * 20, 20, 0)
+                scanPlane.rotation.y = Math.PI / 2
+                scanPlane.material = scanMat
+                scanPlane.isPickable = false
+                scanLines.push({
+                    mesh: scanPlane,
+                    speed: 1.5 + i * 0.7,
+                    offset: i * 40,
+                })
+            }
+
+            // ── Floating Ring Accents ─────────────────────────────────
+            // Thin torus rings floating at various heights
+
+            const ringMat = new StandardMaterial('ringMat', scene)
+            ringMat.emissiveColor = MAGENTA.scale(0.4)
+            ringMat.disableLighting = true
+            ringMat.wireframe = true
+
+            const rings = []
+            for (let i = 0; i < 5; i++) {
+                const r = 1 + rng() * 2
+                const ring = MeshBuilder.CreateTorus(`ring_${i}`, {
+                    diameter: r * 2,
+                    thickness: 0.02,
+                    tessellation: 48,
+                }, scene)
+                const angle = rng() * Math.PI * 2
+                const dist = 10 + rng() * 15
+                ring.position.set(
+                    Math.cos(angle) * dist,
+                    3 + rng() * 12,
+                    Math.sin(angle) * dist,
+                )
+                ring.rotation.x = rng() * Math.PI * 0.3
+                ring.rotation.z = rng() * Math.PI * 0.3
+                ring.material = ringMat
+                ring.isPickable = false
+
+                rings.push({
+                    mesh: ring,
+                    rotSpeed: 0.1 + rng() * 0.3,
+                    bobSpeed: 0.3 + rng() * 0.5,
+                    bobAmp: 0.2 + rng() * 0.4,
+                    baseY: ring.position.y,
+                })
+            }
+
+            // ── Ground-level Grid Edge Glow Lines ─────────────────────
+            // Bright lines along the grid at ground level for extra definition
+
+            const edgeMat = new StandardMaterial('edgeMat', scene)
+            edgeMat.emissiveColor = CYAN.scale(0.5)
+            edgeMat.disableLighting = true
+
+            // Cardinal axis lines — brighter
+            const axisMat = new StandardMaterial('axisMat', scene)
+            axisMat.emissiveColor = CYAN.scale(0.9)
+            axisMat.disableLighting = true
+
+            const axisX = MeshBuilder.CreateBox('axisX', {
+                width: 200, height: 0.01, depth: 0.03,
+            }, scene)
+            axisX.position.y = 0.005
+            axisX.material = axisMat
+            axisX.isPickable = false
+
+            const axisZ = MeshBuilder.CreateBox('axisZ', {
+                width: 0.03, height: 0.01, depth: 200,
+            }, scene)
+            axisZ.position.y = 0.005
+            axisZ.material = axisMat
+            axisZ.isPickable = false
+
+            // ── WebXR ─────────────────────────────────────────────────
+
+            const xr = await WebXRDefaultExperience.CreateAsync(scene, {
+                uiOptions: { sessionMode: 'immersive-vr' },
+                disableTeleportation: true,
+            })
+
+            // ── Animation Loop ────────────────────────────────────────
+
+            let elapsed = 0
+
+            scene.onBeforeRenderObservable.add(() => {
+                const dt = engine.getDeltaTime() / 1000
+                elapsed += dt
+
+                // Update grid shader time
+                gridMat.setFloat('time', elapsed)
+
+                // Rotate wireframe columns on vertical axis
+                for (const col of columns) {
+                    col.mesh.rotation.y += col.rotSpeed * col.rotDir * dt
+                }
+
+                // Sweep scan lines
+                for (const sl of scanLines) {
+                    sl.mesh.position.x = -60 + ((elapsed * sl.speed + sl.offset) % 120)
+                }
+
+                // Bob and rotate rings
+                for (const ring of rings) {
+                    ring.mesh.rotation.y += ring.rotSpeed * dt
+                    ring.mesh.position.y = ring.baseY + Math.sin(elapsed * ring.bobSpeed) * ring.bobAmp
+                }
+
+                // Subtle horizon pulse
+                const horizonPulse = 0.5 + 0.1 * Math.sin(elapsed * 0.5)
+                horizonMat.alpha = horizonPulse
+            })
+
+            // ── Render Loop + Resize ──────────────────────────────────
+
+            engine.runRenderLoop(() => scene.render())
+            window.addEventListener('resize', () => engine.resize())
+        </script>
+    </body>
+</html>
