@@ -11,7 +11,8 @@ Reference: docs/reference/lobby-screen.webp
 
 Lobby receives from router (see architecture.md):
 - scene
-- queue (CommandQueue) — enqueues songSelected with seed + difficulty
+- xrSession — controllers for pointer handles
+- queue (CommandQueue) — enqueues songSelected with seed
 
 ## Scope
 
@@ -172,8 +173,21 @@ Build:
 - Hover/focus animations
 - Any visual tweaks from VR testing
 
+## Menu Visual Issues
+
+1. Font — Consolas monospace looks like a terminal
+2. Song rows — 100px tall, just text, no secondary info
+3. Selected state — barely visible
+4. Difficulty buttons — tiny, cramped
+5. Play button — flat, boring
+6. Panel borders — thin 1px, looks like a web form
+7. Score section — dead space with "--"
+8. No visual hierarchy — everything same weight
+9. No secondary info on songs (duration, artist)
+10. Two panels float with no visual connection
+
 ## Wiring
 
-- [x] Menu enqueues songSelected(seed, difficulty) via command queue (phase 3)
+- [x] Menu enqueues songSelected(seed) via command queue (phase 3)
 - [ ] Laser pointer for VR interaction (phase 2)
 - [ ] MusicPlayer preview (phase 4)

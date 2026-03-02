@@ -10,10 +10,9 @@ Board
 
 # InProgress
 
-- Wire menu into lobby with command queue
-
 # Done
 
+- Wire menu into lobby with command queue
 - Command queue — replace callback navigation with frame-deferred command drain
 - Music player — createMusicPlayer(composition, onBeat) → MusicPlayer (step 9)
 - Beat timeline — extractBeatTimeline(composition) → BeatTimeline (step 8)

@@ -13,9 +13,11 @@ Three phases: **Splash → Lobby ↔ Arena**. A sync router in main.ts manages a
 
 Boot: splash renders while "Enter VR" button is visible. `createXRSession` resolves only after user enters VR (non-null guarantee). Splash disposes, router navigates to lobby.
 
-Page switching uses a `navigate(route)` switch — pages emit events, routing logic lives in one place. Render loop calls `router.activeSystems()` every frame.
+Router owns a CommandQueue. Pages receive the queue and enqueue domain events. Router drains the queue once per frame (before running systems) and handles each command via exhaustive switch.
 
-Router will own shared resources (MusicPlayer, song catalog) in the future. Not yet created.
+Commands: `songSelected` (carries seed), `arenaSessionCompleted`.
+
+Router will own shared MusicPlayer in the future. Song catalog lives in `music/songs.ts`.
 
 ## Page Interface
 
@@ -26,7 +28,7 @@ interface Page {
 }
 ```
 
-Pages produce output signals via single callback (e.g. `lobby.onPlay(cb)`, `arena.onReturnToLobby(cb)`). Bare signals, no payload. Router wires these to `navigate()` calls.
+Pages receive a CommandQueue and enqueue domain events. No callbacks between pages and router — all cross-page communication goes through the queue.
 
 ## Splash Page
 
@@ -34,51 +36,63 @@ Static visuals with pulse animation. No user interaction — exists solely to re
 
 ## Music & Songs
 
-Song catalog, MusicPlayer shape, and music preview — all TBD. See music/ for existing pipeline code.
+Song catalog in `music/songs.ts` — `Song` type with seed + name. Shared across lobby and arena.
+
+Music pipeline: `composeMusic(seed)` → `MusicComposition` → `createMusicPlayer(composition, onBeat, queue)` → `MusicPlayer`. Player enqueues `arenaSessionCompleted` when song ends. Beat callback stays direct (not queued) — `getDraw().schedule` already defers to rAF.
+
+MusicPlayer sharing and music preview — TBD.
 
 ## Lobby Page
 
-Song selection UI. Receives XR session from router.
-Hardcoded song list, no music preview. User picks song and difficulty, triggers transition to Arena.
+Song selection UI. Receives scene and command queue from router.
+Two-panel menu: song list (left), details + difficulty + play (right).
+Babylon.js GUI on 3D planes. Difficulty is lobby-only state (5 levels).
+Play button enqueues `songSelected` with seed.
 
-Controllers render as glowing handles emitting a ray for menu interaction (laser pointer). Ray intersects GUI planes for selection. Handles + rays are lobby's own visuals — disposed on page exit, not shared with arena (arena uses sabers instead).
+VR laser pointer interaction — TBD. Currently mouse/click only.
 
 See `plan-lobby.md` for implementation details.
 
 ## Arena Page
 
-Gameplay environment. Receives theme and XR session from router.
+Gameplay environment. Receives scene, theme, XR session, seed, and command queue from router.
 
-Internal sub-states: playing, paused, results.
-- playing — game active
-- paused — everything visible, game logic frozen, overlay
-- results — score display (song name derived from seed), retry or return to lobby
+Composes music from seed, creates music player, starts playback.
+Stage + sabers + trails are per-frame systems.
+Escape key and song end both enqueue `arenaSessionCompleted`.
 
-Internal state model TBD.
+Choreography, cube pool, collision — not yet implemented.
 
 See `plan-arena.md` for implementation details.
 
 ## XR Session
 
-`xr-session.ts` — creates WebXR helper, resolves only when user enters VR. Returns `XRSession` handle with controllers map and `onSqueeze` for grip button events. Persistent across page transitions — both lobby and arena receive it. Lobby uses controllers for laser pointers, arena for sabers. Arena uses `onSqueeze` to return to lobby.
+`xr-session.ts` — creates WebXR helper, resolves only when user enters VR. Returns `XRSession` handle with controllers map and dispose. Persistent across page transitions — arena uses controllers for sabers. Lobby will use controllers for laser pointers (TBD).
+
+## Command Queue
+
+`command-queue.ts` — typed command union + buffer-swap drain. Router creates the queue, passes it to pages. Pages enqueue, router drains once per frame before running systems. Buffer swap in drain prevents infinite loops (commands enqueued during handling go to next frame).
+
+See `docs/archive/plan-command-queue.md` for design rationale.
 
 ## Directory Structure
 
 Page directories group modules by ownership. Shared files stay in `src/`.
 No cross-page imports — lobby-page/, arena-page/, and music/ can develop in parallel.
-Only coupling point is the router's navigate(route) switch in main.ts.
+Coupling points: router in main.ts, command queue passed to pages.
 
 ```
 src/
-  ├── main.ts                (engine, render loop, router)
+  ├── main.ts                (engine, render loop, router, command handling)
   ├── types.ts               (shared domain types)
+  ├── command-queue.ts       (command union + queue primitive)
   ├── xr-session.ts          (XR session — persistent, required)
-  ├── game-state.ts          (state machine — not yet wired)
   ├── splash-page/
   │   └── splash.ts
   ├── lobby-page/
   │   ├── lobby-page.ts      (page entry point)
-  │   └── menu.ts
+  │   ├── lobby-env.ts       (3D environment)
+  │   └── menu.ts            (song list + difficulty + play)
   ├── arena-page/
   │   ├── arena-page.ts      (page entry point)
   │   ├── stage.ts
@@ -88,15 +102,15 @@ src/
       ├── music-types.ts
       ├── songs.ts            (song catalog — shared)
       ├── music-composer.ts   (tonal)
-      ├── music-player.ts    (tone)
+      ├── music-player.ts     (tone)
       ├── beat-timeline.ts
-      └── audio.ts           (old, being replaced by music-player)
+      └── audio.ts            (old, being replaced by music-player)
 ```
 
 ## Shared Types (src/types.ts)
 
 Domain aliases: Seed, Seconds, Hand
-Gameplay: Difficulty, Lane, Row, SwingDirection
+Gameplay: Difficulty (5 levels), Lane, Row, SwingDirection
 App: System, Teardown
 Theme: Theme, handColor(), isHand()
 
@@ -104,9 +118,10 @@ Music-specific types live in music/music-types.ts.
 
 ## Archive
 
-Previous docs superseded by this one, moved to docs/archive/:
+Previous docs moved to docs/archive/:
 - architecture-drop-ecs.md
 - architecture-music-gameplay.md
 - plan-music-pipeline.md
 - plan-cube-gameplay.md
 - plan-menu.md
+- plan-command-queue.md
