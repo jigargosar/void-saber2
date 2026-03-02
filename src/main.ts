@@ -1,18 +1,16 @@
 import { Engine } from '@babylonjs/core/Engines/engine'
 import { Scene } from '@babylonjs/core/scene'
 import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera'
-import { WebXRDefaultExperience } from '@babylonjs/core/XR/webXRDefaultExperience'
 import { Vector3, Color3 } from '@babylonjs/core/Maths/math'
 
 import '@babylonjs/core/Helpers/sceneHelpers'
 import '@babylonjs/loaders/glTF'
 import '@babylonjs/core/Materials/Node/Blocks'
 
-
-import { type Theme, type System, isHand } from './types'
-import { createStage } from './stage'
-import { type Sabers, createSabers } from './saber'
-import { createAudioEngine } from './audio'
+import { type Theme, type System, type Teardown } from './types'
+import { createLobbyPage } from './lobby-page'
+import { createArenaPage } from './arena-page'
+import { createXRSession, type XRSession } from './xr-session'
 
 const EYE_HEIGHT = 1.6
 
@@ -25,48 +23,6 @@ function setupCamera(scene: Scene) {
     const camera = new FreeCamera('cam', new Vector3(0, EYE_HEIGHT, 0), scene)
     camera.setTarget(new Vector3(0, EYE_HEIGHT, -100))
     camera.attachControl()
-}
-
-// XR observable wiring is composition root work, not a separate module.
-// If future steps need controller lookup by hand (haptics, menu buttons),
-// extract a controllers module then.
-async function setupXR(scene: Scene, sabers: Sabers): Promise<void> {
-    const xr = await WebXRDefaultExperience.CreateAsync(scene, {
-        uiOptions: { sessionMode: 'immersive-vr' },
-        disableTeleportation: true,
-        disablePointerSelection: true,
-        disableNearInteraction: false,
-        disableHandTracking: false,
-        inputOptions: {
-            doNotLoadControllerMeshes: true,
-            disableControllerAnimation: false,
-            disableOnlineControllerRepository: false,
-            controllerOptions: {},
-        },
-    }).catch((err) => { console.error(err); return undefined })
-    if (!xr) return
-
-    xr.input.onControllerAddedObservable.add((source) => {
-        const hand = source.inputSource.handedness
-        if (!isHand(hand) || !source.grip) return
-        sabers.attach(hand, source.grip)
-    })
-
-    xr.input.onControllerRemovedObservable.add((source) => {
-        const hand = source.inputSource.handedness
-        if (!isHand(hand)) return
-        sabers.detach(hand)
-    })
-}
-
-function startGameLoop(scene: Scene, systems: System[]): void {
-    const engine = scene.getEngine()
-    scene.onBeforeRenderObservable.add(() => {
-        const dt = engine.getDeltaTime() / 1000
-        for (const system of systems) {
-            system(dt)
-        }
-    })
 }
 
 function setupEngine(): { engine: Engine; scene: Scene } {
@@ -84,31 +40,45 @@ function setupEngine(): { engine: Engine; scene: Scene } {
 function main(): void {
     const { engine, scene } = setupEngine()
 
-    const stage = createStage(scene, theme)
-    const sabers = createSabers(scene, theme)
-    const audio = createAudioEngine()
-    setupXR(scene, sabers).catch(console.error)
+    // Router state
+    let activeSystems: readonly System[] = []
+    let disposePage: Teardown = () => {}
+    let xrSession: XRSession | null = null
 
-    // Audio context requires user gesture to start
-    const canvas = engine.getRenderingCanvas()
-    if (canvas) {
-        canvas.addEventListener('click', () => audio.start(), { once: true })
+    function showLobby(): void {
+        disposePage()
+        const lobby = createLobbyPage(scene)
+        activeSystems = lobby.systems
+        lobby.onPlay((seed, difficulty) => {
+            console.log(`Play: seed=${seed}, difficulty=${difficulty}`)
+            showArena()
+        })
+        disposePage = () => { lobby.dispose() }
     }
 
-    // Temporary keyboard triggers for desktop testing (removed in step 8)
-    document.addEventListener('keydown', (e) => {
-        switch (e.key) {
-            case 'k': audio.triggerKick(); break
-            case 'j': audio.triggerSnare(); break
-            case 'h': audio.triggerHat(); break
-            case 'b': audio.triggerBass('C2', 0.3); break
+    function showArena(): void {
+        disposePage()
+        const arena = createArenaPage(scene, theme, xrSession)
+        activeSystems = arena.systems
+        arena.onReturnToLobby(() => { showLobby() })
+        disposePage = () => { arena.dispose() }
+    }
+
+    // Boot into lobby
+    showLobby()
+
+    // XR session — persistent across page transitions
+    createXRSession(scene).then((session) => {
+        xrSession = session
+    }).catch(console.error)
+
+    // Game loop reads active page's systems
+    scene.onBeforeRenderObservable.add(() => {
+        const dt = engine.getDeltaTime() / 1000
+        for (const system of activeSystems) {
+            system(dt)
         }
     })
-
-    startGameLoop(scene, [
-        stage.beatDecaySystem,
-        sabers.trailUpdateSystem,
-    ])
 
     engine.runRenderLoop(() => scene.render())
     window.addEventListener('resize', () => engine.resize())
