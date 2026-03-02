@@ -11,7 +11,7 @@ import { type Theme, type System, type Teardown } from './types'
 import { createSplash } from './splash-page/splash'
 import { createLobbyPage } from './lobby-page/lobby-page'
 import { createArenaPage } from './arena-page/arena-page'
-import { createXRSession } from './xr-session'
+import { createXRSession, type XRSession } from './xr-session'
 
 const EYE_HEIGHT = 1.6
 
@@ -38,24 +38,16 @@ function setupEngine(): { engine: Engine; scene: Scene } {
 
 // ── Router (manages full page lifecycle) ────────────────────
 
-type SystemsSetter = (systems: readonly System[]) => void
-
 type Route =
     | { readonly page: 'lobby' }
     | { readonly page: 'arena' }
 
-async function createRouter(
-    scene: Scene,
-    setSystems: SystemsSetter,
-): Promise<void> {
-    // Splash while waiting for XR entry
-    const splash = createSplash(scene)
-    setSystems(splash.systems)
+interface Router {
+    activeSystems(): readonly System[]
+}
 
-    const xrSession = await createXRSession(scene)
-    splash.dispose()
-
-    // Page navigation
+function createRouter(scene: Scene): Router {
+    let currentSystems: readonly System[] = []
     let teardown: Teardown = () => {}
 
     function navigate(route: Route): void {
@@ -64,14 +56,14 @@ async function createRouter(
         switch (route.page) {
             case 'lobby': {
                 const lobby = createLobbyPage(scene)
-                setSystems(lobby.systems)
+                currentSystems = lobby.systems
                 lobby.onPlay(() => { navigate({ page: 'arena' }) })
                 teardown = () => { lobby.dispose() }
                 break
             }
             case 'arena': {
                 const arena = createArenaPage(scene, theme, xrSession)
-                setSystems(arena.systems)
+                currentSystems = arena.systems
                 arena.onReturnToLobby(() => { navigate({ page: 'lobby' }) })
                 teardown = () => { arena.dispose() }
                 break
@@ -79,28 +71,36 @@ async function createRouter(
         }
     }
 
-    navigate({ page: 'lobby' })
+    // Splash while waiting for XR entry
+    const splash = createSplash(scene)
+    currentSystems = splash.systems
+
+    let xrSession: XRSession
+    createXRSession(scene).then((session) => {
+        xrSession = session
+        splash.dispose()
+        navigate({ page: 'lobby' })
+    }).catch(console.error)
+
+    return {
+        activeSystems() { return currentSystems },
+    }
 }
 
 // ── Boot ────────────────────────────────────────────────────
 
-async function main(): Promise<void> {
+function main(): void {
     const { engine, scene } = setupEngine()
+    const router = createRouter(scene)
 
-    let systems: readonly System[] = []
-
-    // Render loop — always running, reads current systems
     scene.onBeforeRenderObservable.add(() => {
         const dt = engine.getDeltaTime() / 1000
-        for (const system of systems) {
+        for (const system of router.activeSystems()) {
             system(dt)
         }
     })
     engine.runRenderLoop(() => scene.render())
     window.addEventListener('resize', () => engine.resize())
-
-    // Router owns all page lifecycle: splash → XR → lobby ↔ arena
-    await createRouter(scene, (s) => { systems = s }) 
 }
 
-main().catch(console.error)
+main()
