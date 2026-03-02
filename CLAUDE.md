@@ -31,7 +31,7 @@ No test runner or linter is configured.
 
 VR Beat Saber clone: Babylon.js (3D/WebXR), domain modules with closures.
 
-Flat `src/` layout — no subdirectories. Files are added as milestones progress.
+Mostly flat `src/` layout. `src/music/` holds the music pipeline modules. Files are added as milestones progress.
 
 ## Module Pattern
 
@@ -46,14 +46,22 @@ Example (stage.ts): `createStage(scene, theme)` → `Stage` handle with `onBeat(
 
 See `docs/architecture-drop-ecs.md` for XR wiring pattern and full module map.
 
+## Page Routing
+
+`main.ts` implements a lobby↔arena page router. Each page factory returns `{ systems, dispose }`. The render loop runs the active page's systems via `activeSystems`. Page transitions call `disposePage()` then create the new page.
+
+XR session is created once at boot and persists across page transitions. Pages receive `xrSession: XRSession | null` as a dependency.
+
 ## Conventions
 
 - Domain type aliases and theme: see `src/types.ts`
+- Music-specific types (MusicComposition, BeatTimeline, NoteEvent, etc.): see `src/music/music-types.ts`
 - **Babylon.js imports**: Use deep imports (`@babylonjs/core/Meshes/meshBuilder`) not barrel imports.
 - **Babylon.js scene**: Always pass `scene` explicitly to constructors (`new StandardMaterial(name, scene)`, `MeshBuilder.Create*(name, opts, scene)`). Never rely on Babylon's implicit "last created scene" fallback.
 
 ## Key Dependencies
 
-- `@babylonjs/core`, `@babylonjs/loaders` — 3D engine + WebXR
+- `@babylonjs/core`, `@babylonjs/loaders`, `@babylonjs/gui` — 3D engine + WebXR + GUI
 - `tone` — audio synthesis (music-player.ts)
 - `tonal` — music theory (music-composer.ts)
+- `tailwindcss` v4 — styling (via Vite plugin)
