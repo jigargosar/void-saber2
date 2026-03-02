@@ -8,32 +8,32 @@ Beat Saber clone. Babylon.js + WebXR.
 - Audio: Web Audio API only — no audio files. 7 synth instruments (kick/snare/hat/bass/pad/arp/melody) via Tone.js.
 - Music: Procedural composition — seeded RNG, Markov chord progressions, energy curves, variable BPM per section. Uses tonal for music theory.
 - Choreography: Procedural beatmap generation from MusicComposition + BeatTimeline + Difficulty.
-- Menu/results: Full state machine — menu → countdown → playing → paused → results.
+- Menu/results: Full state machine — menu → playing ⇄ paused → results.
 - Scope: All 23 steps. No shortcuts.
 - ECS: Evaluated Koota and Miniplex. Koota's trait factories can't type external Babylon.js objects without nullable defaults — the dominant data pattern across all 23 steps. Miniplex handles this cleanly via `world.add(entity, component)` with full type narrowing on queries — the best TypeScript ECS available. Dropped because development has stalled. Entity inventory (2 controllers, 2 sabers, 2 trails, ~100 pooled cubes) doesn't justify ECS anyway — domain modules with closures suffice. Expand this section as needed, referencing how Miniplex achieved its typesafety.
 
 ## Build Steps
 
-1. Corridor — dark void, neon edge lines, glowing pillars, GlowLayer, fog — DONE
-2. WebXR session — enter VR, corridor looks correct in headset — DONE
-3. Controller tracking — see controller positions in VR
-4. Sabers — blade + handle + glow, attached to controllers, cyan left magenta right
-5. Saber trails — ribbon behind blade tip, fades along tail
-6. Saber-saber sparks — detect intersection, spawn particles, haptic pulse
-7. Music composer — composeMusic(seed) → MusicComposition (chords, energy, events, variable BPM)
-8. Beat timeline — extractBeatTimeline(composition) → BeatTimeline (resolved beat times)
-9. Music player — createMusicPlayer(composition, onBeat) → MusicPlayer (7 Tone.js instruments)
-10. Choreography — createChoreography(composition, beatTimeline, difficulty) → Choreography (cubes, obstacles)
-11. Cube spawning — pooled rounded cubes, travel toward player, arrive on beat
-12. Directional arrows — arrow on cube face showing required swing direction
-13. Collision — saber vs cube, check swing direction matches
-14. Cut particles — burst of mini cubes on hit, gravity, fade out
-15. Haptics — pulse on hit, lighter on saber contact, nothing on miss
-16. Scoring — hits/misses/streak, HUD display
-17. Beat-reactive environment — pillars pulse, fog breathes, edges glow on beat
-18. State machine — menu / countdown / playing / paused / results
-19. Menu — song list, difficulty, play button, laser pointer interaction
-20. Countdown — 3-2-1, swap controllers to sabers, start audio
-21. Results screen — score, accuracy, retry/menu buttons
-22. More content — additional songs, difficulty variants
-23. Polish — tune timing, speeds, thresholds
+1. [x] Corridor — dark void, neon edge lines, glowing pillars, GlowLayer, fog
+2. [x] WebXR session — enter VR, corridor looks correct in headset
+3. [x] Controller tracking — see controller positions in VR
+4. [x] Sabers — blade + handle + glow, attached to controllers, cyan left magenta right
+5. [x] Saber trails — ribbon behind blade tip, fades along tail
+6. [ ] Saber-saber sparks — detect intersection, spawn particles, haptic pulse
+7. [ ] Music composer — composeMusic(seed) → MusicComposition (chords, energy, events, variable BPM)
+8. [ ] Beat timeline — extractBeatTimeline(composition) → BeatTimeline (resolved beat times)
+9. [ ] Music player — createMusicPlayer(composition, onBeat) → MusicPlayer (7 Tone.js instruments)
+10. [ ] Choreography — createChoreography(composition, beatTimeline, difficulty) → Choreography (cubes, obstacles)
+11. [ ] Cube spawning — pooled rounded cubes, travel toward player, arrive on beat
+12. [ ] Directional arrows — arrow on cube face showing required swing direction
+13. [ ] Collision — saber vs cube, check swing direction matches
+14. [ ] Cut particles — burst of mini cubes on hit, gravity, fade out
+15. [ ] Haptics — pulse on hit, lighter on saber contact, nothing on miss
+16. [ ] Scoring — hits/misses/streak, HUD display
+17. [ ] Beat-reactive environment — pillars pulse, fog breathes, edges glow on beat
+18. [ ] State machine — menu / playing ⇄ paused / results
+19. [ ] Menu — song list, difficulty, play button, laser pointer interaction
+20. [ ] Swap controllers to sabers, start audio
+21. [ ] Results screen — score, accuracy, retry/menu buttons
+22. [ ] More content — additional songs, difficulty variants
+23. [ ] Polish — tune timing, speeds, thresholds
