@@ -4,7 +4,7 @@ import { type Mesh } from '@babylonjs/core/Meshes/mesh'
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { Color3, Vector3 } from '@babylonjs/core/Maths/math'
-import { type Hand, type Teardown, type System, type Theme, handColor } from './types'
+import { type Hand, type Teardown, type System, type Theme, handColor } from '../types'
 import { type Trail, createTrail } from './trail'
 
 const HANDLE_HEIGHT = 0.25

@@ -1,8 +1,8 @@
 import { type Scene } from '@babylonjs/core/scene'
-import { type Theme, type System, type Teardown } from './types'
+import { type Theme, type System, type Teardown } from '../types'
 import { createStage } from './stage'
 import { createSabers } from './saber'
-import { type XRSession } from './xr-session'
+import { type XRSession } from '../xr-session'
 
 export interface ArenaPage {
     readonly systems: readonly System[]

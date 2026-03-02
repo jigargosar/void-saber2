@@ -1,6 +1,6 @@
 import { Scene } from '@babylonjs/core/scene'
 import { Color4 } from '@babylonjs/core/Maths/math'
-import { type Seed, type Difficulty, type System, type Teardown } from './types'
+import { type Seed, type Difficulty, type System, type Teardown } from '../types'
 import { createMenu } from './menu'
 
 const LOBBY_BG = new Color4(0.1, 0.1, 0.12, 1)

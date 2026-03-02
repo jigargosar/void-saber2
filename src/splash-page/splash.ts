@@ -5,7 +5,7 @@ import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { AdvancedDynamicTexture } from '@babylonjs/gui/2D/advancedDynamicTexture'
 import { TextBlock } from '@babylonjs/gui/2D/controls/textBlock'
 import { Control } from '@babylonjs/gui/2D/controls/control'
-import { type System, type Teardown } from './types'
+import { type System, type Teardown } from '../types'
 
 const BG_COLOR = new Color4(0.01, 0.01, 0.03, 1)
 const ACCENT = '#00e5ff'

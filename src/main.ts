@@ -8,9 +8,9 @@ import '@babylonjs/loaders/glTF'
 import '@babylonjs/core/Materials/Node/Blocks'
 
 import { type Theme, type System, type Teardown } from './types'
-import { createSplash } from './splash'
-import { createLobbyPage } from './lobby-page'
-import { createArenaPage } from './arena-page'
+import { createSplash } from './splash-page/splash'
+import { createLobbyPage } from './lobby-page/lobby-page'
+import { createArenaPage } from './arena-page/arena-page'
 import { createXRSession, type XRSession } from './xr-session'
 
 const EYE_HEIGHT = 1.6

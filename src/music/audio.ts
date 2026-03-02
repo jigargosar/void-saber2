@@ -7,7 +7,7 @@ import {
     start as startTone,
     getDestination,
 } from 'tone'
-import { type Seconds, type Velocity, type NoteName, type Teardown } from './types'
+import { type Seconds, type Velocity, type NoteName, type Teardown } from '../types'
 
 export interface AudioEngine {
     start(): Promise<void>

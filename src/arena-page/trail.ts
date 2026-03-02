@@ -5,7 +5,7 @@ import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { type Scene } from '@babylonjs/core/scene'
 import { type Color3 } from '@babylonjs/core/Maths/math'
 import { type Vector3 } from '@babylonjs/core/Maths/math.vector'
-import { type Seconds, type Teardown } from './types'
+import { type Seconds, type Teardown } from '../types'
 
 const SAMPLE_COUNT = 60
 const FLOATS_PER_SAMPLE = 6      // 2 vertices × 3 (base xyz, tip xyz)

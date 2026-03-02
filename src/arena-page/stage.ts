@@ -7,7 +7,7 @@ import { PointLight } from '@babylonjs/core/Lights/pointLight'
 import { GlowLayer } from '@babylonjs/core/Layers/glowLayer'
 import { Vector3, Color3, Color4 } from '@babylonjs/core/Maths/math'
 import { type Light } from '@babylonjs/core/Lights/light'
-import { type Theme, type Seconds, type System } from './types'
+import { type Theme, type Seconds, type System } from '../types'
 
 interface PillarPulseTarget {
     readonly mat: StandardMaterial

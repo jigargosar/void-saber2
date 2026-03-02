@@ -8,7 +8,7 @@ import { StackPanel } from '@babylonjs/gui/2D/controls/stackPanel'
 import { Rectangle } from '@babylonjs/gui/2D/controls/rectangle'
 import { RadioButton } from '@babylonjs/gui/2D/controls/radioButton'
 import { Control } from '@babylonjs/gui/2D/controls/control'
-import { type Seed, type Difficulty, type Teardown } from './types'
+import { type Seed, type Difficulty, type Teardown } from '../types'
 
 // ── Song catalog ─────────────────────────────────────────────────
 
