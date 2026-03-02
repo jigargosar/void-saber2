@@ -12,7 +12,7 @@ import { createSplash } from './splash-page/splash'
 import { createLobbyPage } from './lobby-page/lobby-page'
 import { createArenaPage } from './arena-page/arena-page'
 import { createXRSession, type XRSession } from './xr-session'
-import { type Command, type CommandQueue, createCommandQueue } from './command-queue'
+import { type Command, createCommandQueue } from './command-queue'
 
 const EYE_HEIGHT = 1.6
 
@@ -45,10 +45,11 @@ type Route =
 
 interface Router {
     activeSystems(): readonly System[]
-    handleCommand(command: Command): void
+    drain(): void
 }
 
-function createRouter(scene: Scene, queue: CommandQueue): Router {
+function createRouter(scene: Scene): Router {
+    const queue = createCommandQueue()
     let currentSystems: readonly System[] = []
     let teardown: Teardown = () => {}
 
@@ -96,7 +97,7 @@ function createRouter(scene: Scene, queue: CommandQueue): Router {
 
     return {
         activeSystems() { return currentSystems },
-        handleCommand,
+        drain() { queue.drain(handleCommand) },
     }
 }
 
@@ -104,11 +105,10 @@ function createRouter(scene: Scene, queue: CommandQueue): Router {
 
 function main(): void {
     const { engine, scene } = setupEngine()
-    const queue = createCommandQueue()
-    const router = createRouter(scene, queue)
+    const router = createRouter(scene)
 
     scene.onBeforeRenderObservable.add(() => {
-        queue.drain((command) => router.handleCommand(command))
+        router.drain()
 
         const dt = engine.getDeltaTime() / 1000
         for (const system of router.activeSystems()) {
