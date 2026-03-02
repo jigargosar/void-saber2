@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Void Saber — Splash Screen Experiment</title>
+<style>
+  * { margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+  #renderCanvas { width: 100%; height: 100%; display: block; outline: none; }
+</style>
+<script src="https://cdn.babylonjs.com/babylon.js"></script>
+<script src="https://cdn.babylonjs.com/gui/babylon.gui.min.js"></script>
+</head>
+<body>
+<canvas id="renderCanvas"></canvas>
+<script>
+// ════════════════════════════════════════════════════════════════
+//  VOID SABER — Neon Splash Screen Experiment
+// ════════════════════════════════════════════════════════════════
+
+const canvas = document.getElementById("renderCanvas");
+const engine = new BABYLON.Engine(canvas, true, { stencil: true }, true);
+
+// ── Color Palette ──────────────────────────────────────────────
+const CYAN       = new BABYLON.Color3(0, 0.92, 1.0);
+const MAGENTA    = new BABYLON.Color3(1.0, 0.0, 0.72);
+const PURPLE     = new BABYLON.Color3(0.45, 0.05, 0.85);
+const HOT_WHITE  = new BABYLON.Color3(1.0, 0.98, 1.0);
+const DARK_BG    = new BABYLON.Color4(0.005, 0.005, 0.02, 1);
+
+// ── Timing ─────────────────────────────────────────────────────
+const BOOT_FLICKER_DURATION = 2.0; // seconds of startup flicker
+const TITLE_REVEAL_DELAY    = 1.2; // title starts appearing after this
+const TITLE_REVEAL_DURATION = 1.8; // letter-by-letter duration
+
+function createScene() {
+  const scene = new BABYLON.Scene(engine);
+  scene.clearColor = DARK_BG;
+  scene.ambientColor = new BABYLON.Color3(0.01, 0.01, 0.02);
+  scene.fogMode = BABYLON.Scene.FOGMODE_EXP2;
+  scene.fogDensity = 0.015;
+  scene.fogColor = new BABYLON.Color3(0.01, 0.01, 0.03);
+
+  // ── Camera ─────────────────────────────────────────────────
+  const camera = new BABYLON.ArcRotateCamera(
+    "cam", -Math.PI / 2, Math.PI / 3.2, 6, new BABYLON.Vector3(0, 1.1, 0), scene
+  );
+  camera.lowerBetaLimit = Math.PI / 5;
+  camera.upperBetaLimit = Math.PI / 2.2;
+  camera.lowerRadiusLimit = 4;
+  camera.upperRadiusLimit = 10;
+  camera.attachControl(canvas, true);
+
+  // Auto-orbit
+  camera.useAutoRotationBehavior = true;
+  camera.autoRotationBehavior.idleRotationSpeed = 0.12;
+  camera.autoRotationBehavior.idleRotationWaitTime = 2000;
+  camera.autoRotationBehavior.idleRotationSpinupTime = 3000;
+
+  // Gentle vertical drift
+  let camDriftT = 0;
+  const baseBeta = camera.beta;
+
+  // ── Glow Layer ─────────────────────────────────────────────
+  const glow = new BABYLON.GlowLayer("glow", scene, {
+    mainTextureSamples: 4,
+    blurKernelSize: 128,
+  });
+  glow.intensity = 1.8;
+
+  // ── Reflective Floor ───────────────────────────────────────
+  const floor = BABYLON.MeshBuilder.CreateGround("floor", {
+    width: 40, height: 40, subdivisions: 1
+  }, scene);
+  floor.position.y = -0.5;
+
+  const floorMat = new BABYLON.StandardMaterial("floorMat", scene);
+  floorMat.diffuseColor  = new BABYLON.Color3(0.01, 0.01, 0.02);
+  floorMat.specularColor = new BABYLON.Color3(0.6, 0.6, 0.7);
+  floorMat.specularPower = 128;
+
+  // Mirror reflection
+  const mirror = new BABYLON.MirrorTexture("mirror", 1024, scene, true);
+  mirror.mirrorPlane = new BABYLON.Plane(0, -1, 0, -0.5);
+  mirror.level = 0.35;
+  mirror.adaptiveBlurKernel = 32;
+  floorMat.reflectionTexture = mirror;
+  floor.material = floorMat;
+
+  // ── Grid Lines on Floor ────────────────────────────────────
+  const gridMeshes = [];
+  const gridMat = new BABYLON.StandardMaterial("gridMat", scene);
+  gridMat.emissiveColor = new BABYLON.Color3(0.06, 0.06, 0.18);
+  gridMat.disableLighting = true;
+  gridMat.alpha = 0.5;
+
+  // Z-parallel lines
+  for (let x = -10; x <= 10; x += 1) {
+    const line = BABYLON.MeshBuilder.CreateBox("gridZ" + x, {
+      width: 0.01, height: 0.001, depth: 40
+    }, scene);
+    line.position.set(x, -0.498, 0);
+    line.material = gridMat;
+    line.isPickable = false;
+    gridMeshes.push(line);
+  }
+  // X-parallel lines
+  for (let z = -10; z <= 10; z += 1) {
+    const line = BABYLON.MeshBuilder.CreateBox("gridX" + z, {
+      width: 40, height: 0.001, depth: 0.01
+    }, scene);
+    line.position.set(0, -0.498, z);
+    line.material = gridMat;
+    line.isPickable = false;
+    gridMeshes.push(line);
+  }
+
+  // ── Build Neon Saber ───────────────────────────────────────
+  //  Layered: dark handle + inner white core + outer colored glow
+  const saberMeshes = []; // track for mirror renderList
+
+  function buildNeonSaber(name, color, posX, tiltZ) {
+    const root = new BABYLON.TransformNode(name, scene);
+    root.position.set(posX, 1.3, -1.5);
+    root.rotation.set(Math.PI / 2, 0, tiltZ);
+
+    const HANDLE_H = 0.28;
+    const HANDLE_D = 0.04;
+    const BLADE_H  = 0.9;
+
+    // Handle — dark metallic
+    const handleMat = new BABYLON.StandardMaterial(name + "HandleMat", scene);
+    handleMat.diffuseColor  = new BABYLON.Color3(0.08, 0.08, 0.1);
+    handleMat.specularColor = new BABYLON.Color3(0.4, 0.4, 0.5);
+    handleMat.specularPower = 64;
+
+    const handle = BABYLON.MeshBuilder.CreateCylinder(name + "Handle", {
+      height: HANDLE_H, diameter: HANDLE_D, tessellation: 16
+    }, scene);
+    handle.material = handleMat;
+    handle.parent = root;
+    saberMeshes.push(handle);
+
+    // Handle accent ring
+    const ringMat = new BABYLON.StandardMaterial(name + "RingMat", scene);
+    ringMat.emissiveColor = color.scale(0.5);
+    ringMat.disableLighting = true;
+
+    const ring = BABYLON.MeshBuilder.CreateTorus(name + "Ring", {
+      diameter: HANDLE_D + 0.008, thickness: 0.006, tessellation: 24
+    }, scene);
+    ring.position.y = HANDLE_H / 2 - 0.02;
+    ring.material = ringMat;
+    ring.parent = root;
+    saberMeshes.push(ring);
+
+    // Blade — outer glow layer (colored, slightly transparent)
+    const outerMat = new BABYLON.StandardMaterial(name + "OuterMat", scene);
+    outerMat.emissiveColor = color;
+    outerMat.disableLighting = true;
+    outerMat.alpha = 0.7;
+
+    const outerBlade = BABYLON.MeshBuilder.CreateCylinder(name + "Outer", {
+      height: BLADE_H, diameter: 0.04, tessellation: 12
+    }, scene);
+    outerBlade.position.y = HANDLE_H / 2 + BLADE_H / 2;
+    outerBlade.material = outerMat;
+    outerBlade.parent = root;
+    saberMeshes.push(outerBlade);
+
+    // Blade — inner core (hot white, thinner)
+    const innerMat = new BABYLON.StandardMaterial(name + "InnerMat", scene);
+    innerMat.emissiveColor = HOT_WHITE;
+    innerMat.disableLighting = true;
+
+    const innerBlade = BABYLON.MeshBuilder.CreateCylinder(name + "Inner", {
+      height: BLADE_H - 0.02, diameter: 0.015, tessellation: 8
+    }, scene);
+    innerBlade.position.y = HANDLE_H / 2 + BLADE_H / 2;
+    innerBlade.material = innerMat;
+    innerBlade.parent = root;
+    saberMeshes.push(innerBlade);
+
+    // Blade tip glow sphere
+    const tipMat = new BABYLON.StandardMaterial(name + "TipMat", scene);
+    tipMat.emissiveColor = color;
+    tipMat.disableLighting = true;
+    tipMat.alpha = 0.6;
+
+    const tip = BABYLON.MeshBuilder.CreateSphere(name + "Tip", {
+      diameter: 0.05, segments: 8
+    }, scene);
+    tip.position.y = HANDLE_H / 2 + BLADE_H + 0.01;
+    tip.material = tipMat;
+    tip.parent = root;
+    saberMeshes.push(tip);
+
+    // Point light at blade center for floor illumination
+    const light = new BABYLON.PointLight(name + "Light", BABYLON.Vector3.Zero(), scene);
+    light.diffuse = color;
+    light.intensity = 0.8;
+    light.range = 4;
+    light.parent = outerBlade;
+
+    return { root, outerMat, innerMat, tipMat, ringMat, light, outerBlade };
+  }
+
+  const saberL = buildNeonSaber("saberL", CYAN,    -0.45,  0.25);
+  const saberR = buildNeonSaber("saberR", MAGENTA,  0.45, -0.25);
+
+  // ── Neon Flicker State Machine ─────────────────────────────
+  function createFlicker(mats, baseColors, opts = {}) {
+    const flickerChance = opts.chance || 0.03;
+    const minStable     = opts.minStable || 0.3;
+    const maxStable     = opts.maxStable || 1.5;
+
+    let state = "on";  // on | off | settling
+    let timer = 0.5 + Math.random() * 1.0;
+
+    return function update(dt) {
+      timer -= dt;
+      if (timer > 0) return;
+
+      switch (state) {
+        case "on":
+          if (Math.random() < flickerChance) {
+            state = "off";
+            timer = 0.03 + Math.random() * 0.08;
+            for (let i = 0; i < mats.length; i++) {
+              mats[i].emissiveColor = BABYLON.Color3.Black();
+            }
+          } else {
+            timer = 0.05 + Math.random() * 0.3;
+          }
+          break;
+
+        case "off":
+          if (Math.random() < 0.55) {
+            state = "settling";
+            timer = 0.02 + Math.random() * 0.04;
+            for (let i = 0; i < mats.length; i++) {
+              mats[i].emissiveColor = baseColors[i].scale(0.3);
+            }
+          } else {
+            state = "on";
+            timer = minStable + Math.random() * (maxStable - minStable);
+            for (let i = 0; i < mats.length; i++) {
+              mats[i].emissiveColor = baseColors[i];
+            }
+          }
+          break;
+
+        case "settling":
+          state = "on";
+          timer = minStable + Math.random() * (maxStable - minStable);
+          for (let i = 0; i < mats.length; i++) {
+            mats[i].emissiveColor = baseColors[i];
+          }
+          break;
+      }
+    };
+  }
+
+  const flickerL = createFlicker(
+    [saberL.outerMat, saberL.tipMat, saberL.ringMat],
+    [CYAN, CYAN, CYAN.scale(0.5)]
+  );
+  const flickerR = createFlicker(
+    [saberR.outerMat, saberR.tipMat, saberR.ringMat],
+    [MAGENTA, MAGENTA, MAGENTA.scale(0.5)]
+  );
+
+  // ── Boot Power-On Sequence ─────────────────────────────────
+  // Sabers flicker rapidly at start, then stabilize
+  let bootElapsed = 0;
+  let bootDone = false;
+
+  function bootFlicker(saber, baseColor, t) {
+    // Rapid on/off with increasing stability
+    const stability = t / BOOT_FLICKER_DURATION; // 0→1
+    const noise = Math.sin(t * 60) * Math.cos(t * 37) * Math.sin(t * 23);
+    const threshold = -1 + stability * 2.5; // starts mostly off, ends mostly on
+    const isOn = noise > threshold;
+
+    const brightness = isOn ? (0.3 + stability * 0.7) : 0.0;
+    saber.outerMat.emissiveColor = baseColor.scale(brightness);
+    saber.innerMat.emissiveColor = HOT_WHITE.scale(brightness);
+    saber.tipMat.emissiveColor   = baseColor.scale(brightness * 0.8);
+    saber.light.intensity        = brightness * 0.8;
+  }
+
+  // ── Rotating Spotlights ────────────────────────────────────
+  const spotlights = [];
+  const spotColors = [CYAN, MAGENTA, PURPLE];
+  const spotPhases = [0, Math.PI * 2/3, Math.PI * 4/3];
+
+  for (let i = 0; i < 3; i++) {
+    const spot = new BABYLON.SpotLight(
+      "spot" + i,
+      new BABYLON.Vector3(0, 7, 0),
+      new BABYLON.Vector3(0, -1, 0),
+      Math.PI / 5,
+      3,
+      scene
+    );
+    spot.diffuse   = spotColors[i];
+    spot.specular  = spotColors[i].scale(0.5);
+    spot.intensity = 2.5;
+    spot.range     = 15;
+
+    // Visible cone mesh
+    const cone = BABYLON.MeshBuilder.CreateCylinder("cone" + i, {
+      diameterTop: 0, diameterBottom: 4, height: 7, tessellation: 16
+    }, scene);
+    cone.position = new BABYLON.Vector3(0, 3.5, 0);
+    cone.isPickable = false;
+
+    const coneMat = new BABYLON.StandardMaterial("coneMat" + i, scene);
+    coneMat.emissiveColor = spotColors[i].scale(0.15);
+    coneMat.alpha = 0.03;
+    coneMat.backFaceCulling = false;
+    coneMat.disableLighting = true;
+    cone.material = coneMat;
+
+    spotlights.push({ spot, cone, phase: spotPhases[i], color: spotColors[i], coneMat });
+  }
+
+  // ── Pillar Ring (enhanced) ─────────────────────────────────
+  const pillarRoot = new BABYLON.TransformNode("pillarRing", scene);
+  pillarRoot.position.set(0, 0, -1.5);
+
+  const PILLAR_COUNT = 12;
+  const PILLAR_RADIUS = 5;
+  const pillarMats = [];
+
+  for (let i = 0; i < PILLAR_COUNT; i++) {
+    const angle = (i / PILLAR_COUNT) * Math.PI * 2;
+    const x = Math.cos(angle) * PILLAR_RADIUS;
+    const z = Math.sin(angle) * PILLAR_RADIUS;
+    const color = i % 3 === 0 ? CYAN.scale(0.3)
+               : i % 3 === 1 ? MAGENTA.scale(0.3)
+               :                PURPLE.scale(0.4);
+
+    const mat = new BABYLON.StandardMaterial("pillarMat" + i, scene);
+    mat.emissiveColor = color;
+    mat.disableLighting = true;
+    pillarMats.push({ mat, baseColor: color });
+
+    const pillar = BABYLON.MeshBuilder.CreateCylinder("pillar" + i, {
+      height: 8, diameter: 0.05, tessellation: 8
+    }, scene);
+    pillar.position.set(x, 3.5, z);
+    pillar.material = mat;
+    pillar.parent = pillarRoot;
+    saberMeshes.push(pillar);
+
+    // Small orb at top of each pillar
+    const orb = BABYLON.MeshBuilder.CreateSphere("pillarOrb" + i, {
+      diameter: 0.12, segments: 6
+    }, scene);
+    orb.position.set(x, 7.6, z);
+    orb.material = mat;
+    orb.parent = pillarRoot;
+    saberMeshes.push(orb);
+  }
+
+  // ── Floor Edge Lines (neon strips) ─────────────────────────
+  for (const cfg of [
+    { x: -2.5, color: CYAN.scale(0.6) },
+    { x:  2.5, color: MAGENTA.scale(0.6) }
+  ]) {
+    const mat = new BABYLON.StandardMaterial("edgeMat" + cfg.x, scene);
+    mat.emissiveColor = cfg.color;
+    mat.disableLighting = true;
+
+    const strip = BABYLON.MeshBuilder.CreateBox("edge" + cfg.x, {
+      width: 0.03, height: 0.01, depth: 30
+    }, scene);
+    strip.position.set(cfg.x, -0.49, -5);
+    strip.material = mat;
+    strip.isPickable = false;
+    saberMeshes.push(strip);
+  }
+
+  // Center line
+  const centerMat = new BABYLON.StandardMaterial("centerEdgeMat", scene);
+  centerMat.emissiveColor = PURPLE.scale(0.3);
+  centerMat.disableLighting = true;
+
+  const centerStrip = BABYLON.MeshBuilder.CreateBox("centerEdge", {
+    width: 0.02, height: 0.008, depth: 30
+  }, scene);
+  centerStrip.position.set(0, -0.49, -5);
+  centerStrip.material = centerMat;
+  centerStrip.isPickable = false;
+  saberMeshes.push(centerStrip);
+
+  // ── Particles — Floating Neon Motes ────────────────────────
+  const motes = new BABYLON.ParticleSystem("motes", 500, scene);
+  motes.particleTexture = new BABYLON.Texture(
+    "https://assets.babylonjs.com/textures/flare.png", scene
+  );
+  motes.emitter     = new BABYLON.Vector3(0, 1.5, -1.5);
+  motes.minEmitBox  = new BABYLON.Vector3(-5, -1, -5);
+  motes.maxEmitBox  = new BABYLON.Vector3(5, 4, 5);
+
+  motes.direction1  = new BABYLON.Vector3(-0.1, 0.3, -0.1);
+  motes.direction2  = new BABYLON.Vector3(0.1, 0.8, 0.1);
+  motes.minEmitPower = 0.03;
+  motes.maxEmitPower = 0.15;
+  motes.updateSpeed  = 0.008;
+  motes.gravity      = new BABYLON.Vector3(0, -0.02, 0);
+
+  motes.minSize     = 0.01;
+  motes.maxSize     = 0.06;
+  motes.minLifeTime = 5;
+  motes.maxLifeTime = 12;
+  motes.emitRate    = 40;
+
+  motes.color1    = new BABYLON.Color4(0.3, 0.85, 1.0, 0.8);
+  motes.color2    = new BABYLON.Color4(0.9, 0.15, 0.8, 0.8);
+  motes.colorDead = new BABYLON.Color4(0, 0, 0, 0);
+  motes.blendMode = BABYLON.ParticleSystem.BLENDMODE_ONEONE;
+  motes.start();
+
+  // ── Saber Spark Particles ──────────────────────────────────
+  function createSaberSparks(name, position, color) {
+    const sparks = new BABYLON.ParticleSystem(name, 100, scene);
+    sparks.particleTexture = new BABYLON.Texture(
+      "https://assets.babylonjs.com/textures/flare.png", scene
+    );
+    sparks.emitter    = position;
+    sparks.minEmitBox = new BABYLON.Vector3(-0.02, -0.02, -0.02);
+    sparks.maxEmitBox = new BABYLON.Vector3(0.02, 0.02, 0.02);
+
+    sparks.direction1  = new BABYLON.Vector3(-0.5, -0.5, -0.5);
+    sparks.direction2  = new BABYLON.Vector3(0.5, 0.5, 0.5);
+    sparks.minEmitPower = 0.2;
+    sparks.maxEmitPower = 0.6;
+    sparks.updateSpeed  = 0.01;
+    sparks.gravity      = new BABYLON.Vector3(0, -0.3, 0);
+
+    sparks.minSize     = 0.005;
+    sparks.maxSize     = 0.025;
+    sparks.minLifeTime = 0.3;
+    sparks.maxLifeTime = 0.8;
+    sparks.emitRate    = 12;
+
+    const c4 = new BABYLON.Color4(color.r, color.g, color.b, 1.0);
+    sparks.color1    = c4;
+    sparks.color2    = new BABYLON.Color4(1, 1, 1, 0.8);
+    sparks.colorDead = new BABYLON.Color4(0, 0, 0, 0);
+    sparks.blendMode = BABYLON.ParticleSystem.BLENDMODE_ONEONE;
+    sparks.start();
+    return sparks;
+  }
+
+  // Sparks at blade tips (approximate world positions)
+  const sparksL = createSaberSparks("sparksL", new BABYLON.Vector3(-0.45, 1.3, -1.5), CYAN);
+  const sparksR = createSaberSparks("sparksR", new BABYLON.Vector3(0.45, 1.3, -1.5), MAGENTA);
+
+  // ── Title: "VOID SABER" ────────────────────────────────────
+  const titlePlane = BABYLON.MeshBuilder.CreatePlane("titlePlane", {
+    width: 3.5, height: 0.8
+  }, scene);
+  titlePlane.position = new BABYLON.Vector3(0, 2.5, -1.5);
+  titlePlane.billboardMode = BABYLON.Mesh.BILLBOARDMODE_ALL;
+  titlePlane.isPickable = false;
+
+  const titlePlaneMat = new BABYLON.StandardMaterial("titlePlaneMat", scene);
+  titlePlaneMat.disableLighting = true;
+  titlePlaneMat.emissiveColor = new BABYLON.Color3(1, 1, 1);
+  titlePlaneMat.backFaceCulling = false;
+  titlePlane.material = titlePlaneMat;
+
+  const titleTexture = BABYLON.GUI.AdvancedDynamicTexture.CreateForMesh(
+    titlePlane, 1024, 256
+  );
+
+  // Main title
+  const titleText = new BABYLON.GUI.TextBlock("title", "");
+  titleText.fontFamily = "'Consolas', 'Courier New', monospace";
+  titleText.fontSize = 120;
+  titleText.color = "#00eeff";
+  titleText.outlineColor = "#00eeff";
+  titleText.outlineWidth = 3;
+  titleText.shadowColor = "#00eeff88";
+  titleText.shadowBlur = 20;
+  titleText.shadowOffsetX = 0;
+  titleText.shadowOffsetY = 0;
+  titleText.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_CENTER;
+  titleText.topInPixels = -20;
+  titleTexture.addControl(titleText);
+
+  // Subtitle
+  const subtitleText = new BABYLON.GUI.TextBlock("subtitle", "");
+  subtitleText.fontFamily = "'Consolas', 'Courier New', monospace";
+  subtitleText.fontSize = 28;
+  subtitleText.color = "#554477";
+  subtitleText.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_CENTER;
+  subtitleText.topInPixels = 60;
+  titleTexture.addControl(subtitleText);
+
+  // Letter-by-letter reveal state
+  const FULL_TITLE    = "VOID SABER";
+  const FULL_SUBTITLE = "ENTER THE VOID";
+  let titleRevealed = 0;
+  let subtitleRevealed = 0;
+  let titleRevealTimer = 0;
+
+  // Title neon flicker — individual character brightness
+  let titleFlickerTimer = 0;
+  let titleFlickerChar  = -1;
+
+  // ── Energy Pulse traveling up blades ───────────────────────
+  let pulsePhase = 0;
+
+  // ── Mirror render list (after all meshes created) ──────────
+  for (const m of saberMeshes) {
+    mirror.renderList.push(m);
+  }
+
+  // ── Main Animation Loop ────────────────────────────────────
+  let elapsed = 0;
+
+  scene.registerBeforeRender(() => {
+    const dt = engine.getDeltaTime() / 1000;
+    elapsed += dt;
+
+    // ── Boot sequence ──────────────────────────────────────
+    if (!bootDone) {
+      bootElapsed += dt;
+      bootFlicker(saberL, CYAN, bootElapsed);
+      bootFlicker(saberR, MAGENTA, bootElapsed + 0.15); // slightly offset
+
+      if (bootElapsed >= BOOT_FLICKER_DURATION) {
+        bootDone = true;
+        // Snap to full brightness
+        saberL.outerMat.emissiveColor = CYAN;
+        saberL.innerMat.emissiveColor = HOT_WHITE;
+        saberL.tipMat.emissiveColor   = CYAN;
+        saberL.light.intensity        = 0.8;
+        saberR.outerMat.emissiveColor = MAGENTA;
+        saberR.innerMat.emissiveColor = HOT_WHITE;
+        saberR.tipMat.emissiveColor   = MAGENTA;
+        saberR.light.intensity        = 0.8;
+      }
+    }
+
+    // ── Saber flicker (after boot) ─────────────────────────
+    if (bootDone) {
+      flickerL(dt);
+      flickerR(dt);
+    }
+
+    // ── Saber bobbing ──────────────────────────────────────
+    const bob = Math.sin(elapsed * 0.8 * Math.PI * 2) * 0.05;
+    saberL.root.position.y = 1.3 + bob;
+    saberR.root.position.y = 1.3 - bob;
+
+    // Slow axial rotation
+    saberL.root.rotation.y += 0.12 * dt;
+    saberR.root.rotation.y -= 0.12 * dt;
+
+    // ── Energy pulse up blades ─────────────────────────────
+    pulsePhase += dt * 2.5;
+    const pulseT = (Math.sin(pulsePhase) + 1) / 2;
+    const pulseBright = 0.85 + pulseT * 0.15;
+    if (bootDone) {
+      saberL.innerMat.emissiveColor = HOT_WHITE.scale(pulseBright);
+      saberR.innerMat.emissiveColor = HOT_WHITE.scale(pulseBright);
+    }
+
+    // ── Rotating spotlights ────────────────────────────────
+    for (const s of spotlights) {
+      const a = elapsed * 0.4 + s.phase;
+      const sweepX = Math.sin(a) * 0.7;
+      const sweepZ = Math.cos(a) * 0.7;
+      s.spot.direction = new BABYLON.Vector3(sweepX, -1, sweepZ).normalize();
+      s.cone.rotation.x = sweepX * 0.2;
+      s.cone.rotation.z = -sweepZ * 0.2;
+
+      // Spotlight intensity pulse
+      s.spot.intensity = 2.0 + Math.sin(elapsed * 1.5 + s.phase) * 0.8;
+
+      // Cone visibility pulse
+      const conePulse = 0.02 + Math.sin(elapsed * 0.8 + s.phase) * 0.015;
+      s.coneMat.alpha = Math.max(0.005, conePulse);
+    }
+
+    // ── Pillar ring rotation ───────────────────────────────
+    pillarRoot.rotation.y += 0.08 * dt;
+
+    // Pillar shimmer
+    for (let i = 0; i < pillarMats.length; i++) {
+      const shimmer = 0.7 + Math.sin(elapsed * 2 + i * 0.8) * 0.3;
+      pillarMats[i].mat.emissiveColor = pillarMats[i].baseColor.scale(shimmer);
+    }
+
+    // ── Glow layer pulse ───────────────────────────────────
+    glow.intensity = 1.5 + Math.sin(elapsed * 1.0) * 0.4;
+
+    // ── Camera drift ───────────────────────────────────────
+    camDriftT += dt * 0.3;
+    camera.beta = baseBeta + Math.sin(camDriftT) * 0.03;
+
+    // ── Title reveal ───────────────────────────────────────
+    if (elapsed > TITLE_REVEAL_DELAY) {
+      titleRevealTimer += dt;
+      const revealProgress = Math.min(titleRevealTimer / TITLE_REVEAL_DURATION, 1);
+      titleRevealed   = Math.floor(revealProgress * FULL_TITLE.length);
+      subtitleRevealed = Math.floor(
+        Math.max(0, (revealProgress - 0.5) * 2) * FULL_SUBTITLE.length
+      );
+
+      // Build title with flicker effect on latest revealed char
+      let displayTitle = FULL_TITLE.substring(0, titleRevealed);
+      titleText.text = displayTitle;
+
+      subtitleText.text = FULL_SUBTITLE.substring(0, subtitleRevealed);
+
+      // Random single-character flicker on title
+      titleFlickerTimer -= dt;
+      if (titleFlickerTimer <= 0 && revealProgress >= 1) {
+        titleFlickerTimer = 0.1 + Math.random() * 0.4;
+        if (Math.random() < 0.15) {
+          titleFlickerChar = Math.floor(Math.random() * FULL_TITLE.length);
+          // Brief color change
+          titleText.color = "#006688";
+          setTimeout(() => {
+            titleText.color = "#00eeff";
+            titleFlickerChar = -1;
+          }, 50 + Math.random() * 80);
+        }
+      }
+
+      // Title glow pulse
+      if (revealProgress >= 1) {
+        const titleGlow = 0.8 + Math.sin(elapsed * 2.0) * 0.2;
+        titlePlaneMat.emissiveColor.set(titleGlow, titleGlow, titleGlow);
+      }
+    }
+
+    // ── Grid line pulse ────────────────────────────────────
+    const gridPulse = 0.04 + Math.sin(elapsed * 0.6) * 0.02;
+    gridMat.emissiveColor.set(gridPulse, gridPulse, gridPulse * 3);
+
+    // ── Spark positions track saber tips ────────────────────
+    // Approximate — sabers are tilted so tip positions shift
+    const tipYL = saberL.root.position.y;
+    const tipYR = saberR.root.position.y;
+    sparksL.emitter.y = tipYL;
+    sparksR.emitter.y = tipYR;
+  });
+
+  return scene;
+}
+
+const scene = createScene();
+
+engine.runRenderLoop(() => {
+  scene.render();
+});
+
+window.addEventListener("resize", () => {
+  engine.resize();
+});
+</script>
+</body>
+</html>
