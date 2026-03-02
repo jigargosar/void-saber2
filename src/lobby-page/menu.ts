@@ -23,26 +23,15 @@ const SONGS = [
     { seed: 31415 as Seed, name: 'Deep Fade' },
 ] as const
 
-// ── Local difficulty (5-level display, maps to 3-level Difficulty) ──
+// ── Difficulties ────────────────────────────────────────────────
 
-type LobbyDifficulty = 'easy' | 'normal' | 'hard' | 'expert' | 'expertPlus'
-
-const DIFFICULTIES: readonly { readonly key: LobbyDifficulty; readonly label: string }[] = [
+const DIFFICULTIES: readonly { readonly key: Difficulty; readonly label: string }[] = [
     { key: 'easy', label: 'Easy' },
     { key: 'normal', label: 'Normal' },
     { key: 'hard', label: 'Hard' },
     { key: 'expert', label: 'Expert' },
     { key: 'expertPlus', label: 'Expert+' },
 ]
-
-// Expert/Expert+ map to 'hard' until types.ts is expanded
-const DIFFICULTY_TO_GAME: Record<LobbyDifficulty, Difficulty> = {
-    easy: 'easy',
-    normal: 'medium',
-    hard: 'hard',
-    expert: 'hard',
-    expertPlus: 'hard',
-}
 
 // ── Colors ───────────────────────────────────────────────────────
 
@@ -228,8 +217,7 @@ export function createMenu(scene: Scene, queue: CommandQueue): Menu {
 
     playBtn.onPointerClickObservable.add(() => {
         const song = SONGS[selectedSongIdx]
-        const diff = DIFFICULTY_TO_GAME[DIFFICULTIES[selectedDiffIdx].key]
-        queue.enqueue({ type: 'songSelected', seed: song.seed, difficulty: diff })
+        queue.enqueue({ type: 'songSelected', seed: song.seed, difficulty: DIFFICULTIES[selectedDiffIdx].key })
     })
     playBtn.onPointerEnterObservable.add(() => { playBtn.background = ACCENT_PINK })
     playBtn.onPointerOutObservable.add(() => { playBtn.background = ACCENT })

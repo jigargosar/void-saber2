@@ -11,9 +11,7 @@ Reference: docs/reference/lobby-screen.webp
 
 Lobby receives from router (see architecture.md):
 - scene
-- xrSession — controllers for pointer handles
-
-Lobby emits: onPlay(seed, difficulty) → router navigates to arena.
+- queue (CommandQueue) — enqueues songSelected with seed + difficulty
 
 ## Scope
 
@@ -139,7 +137,7 @@ Build:
 - Difficulty buttons toggle
 
 Mock: everything — pack thumbnails, cover art, artist, duration,
-stats, highscores, favorite icon. Play trigger is squeeze grip.
+stats, highscores, favorite icon. Play trigger is click/pointer on Play button.
 
 ### Phase 2: Pointer handles
 
@@ -151,14 +149,11 @@ Build:
 Mock: cover art, stats, highscores. Play trigger moves from
 squeeze grip to laser pointer on Play button.
 
-### Phase 3: Play carries selection
+### Phase 3: Play carries selection — DONE
 
-Build:
-- onPlay emits seed + difficulty from current menu selection
-- Router forwards to arena
-- Difficulty type expanded in types.ts (5-level)
-
-Mock: cover art, stats, highscores.
+Menu enqueues songSelected(seed, difficulty) via command queue.
+Router handles command and navigates to arena.
+See docs/reference/command-queue-design.md.
 
 ### Phase 4: Song preview
 
@@ -179,7 +174,6 @@ Build:
 
 ## Wiring
 
-- [x] Squeeze grip triggers navigation to arena (temporary)
-- [ ] onPlay carries seed + difficulty (phase 3)
-- [ ] Laser pointer replaces squeeze grip (phase 2)
+- [x] Menu enqueues songSelected(seed, difficulty) via command queue (phase 3)
+- [ ] Laser pointer for VR interaction (phase 2)
 - [ ] MusicPlayer preview (phase 4)

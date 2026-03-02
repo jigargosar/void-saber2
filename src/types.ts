@@ -17,7 +17,7 @@ export type Energy = number       // 0–1, drives density/intensity
 
 // ── Gameplay ────────────────────────────────────────────────
 
-export type Difficulty = 'easy' | 'medium' | 'hard'
+export type Difficulty = 'easy' | 'normal' | 'hard' | 'expert' | 'expertPlus'
 export type Lane = 0 | 1 | 2 | 3           // columns left to right
 export type Row = 0 | 1 | 2                // rows bottom to top
 export type SwingDirection =

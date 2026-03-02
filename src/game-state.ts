@@ -56,7 +56,7 @@ export interface GameStateManager {
 }
 
 export function createGameStateManager(): GameStateManager {
-    let state: State = { phase: 'menu', selectedSeed: null, difficulty: 'medium' }
+    let state: State = { phase: 'menu', selectedSeed: null, difficulty: 'normal' }
     const listeners = new Set<(phase: GamePhase) => void>()
 
     function firePhaseChange(): void {
