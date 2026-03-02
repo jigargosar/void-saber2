@@ -22,6 +22,7 @@ export interface MusicPlayer {
 export function createMusicPlayer(
     composition: MusicComposition,
     onBeat: () => void,
+    onEnd: () => void,
 ): MusicPlayer {
     const transport = getTransport()
     const parts: Part[] = []
@@ -174,7 +175,10 @@ export function createMusicPlayer(
 
     // ── Auto-stop after song ends ────────────────────────────
 
-    transport.schedule(() => { stop() }, composition.totalTime + TAIL_SECONDS)
+    transport.schedule(() => {
+        stop()
+        onEnd()
+    }, composition.totalTime + TAIL_SECONDS)
 
     // ── Transport config ─────────────────────────────────────
 
