@@ -18,8 +18,8 @@ const FOG_COLOR = new Color3(0.02, 0.06, 0.1)       // blue-teal fog — creates
 const FOG_DENSITY = 0.018
 
 const SPOT_COLOR = new Color3(0.2, 0.7, 0.9)        // bright teal
-const SPOT_POSITION = new Vector3(0, 20, -6)         // high above, behind panels
-const SPOT_DIRECTION = new Vector3(0, -1, -0.1)      // mostly down
+const SPOT_POSITION = new Vector3(0, 15, -8)         // above and behind menu panels
+const SPOT_DIRECTION = new Vector3(0, -0.7, 0.7)     // down and forward toward menu
 const SPOT_ANGLE = Math.PI / 2                       // very wide cone
 const SPOT_EXPONENT = 0.8                            // slow falloff
 const SPOT_INTENSITY = 10
@@ -28,17 +28,6 @@ const GROUND_SIZE = 60
 const GROUND_BORDER_SIZE = 14                        // wireframe border rectangle
 const GROUND_BORDER_COLOR = new Color3(0.03, 0.15, 0.25)
 
-// Box cluster depth cues
-const BOX_CLUSTERS = [
-    { x: -12, z: -8, count: 3, scale: 1.2 },
-    { x: 14, z: -12, count: 4, scale: 0.8 },
-    { x: -9, z: -18, count: 2, scale: 1.5 },
-    { x: 8, z: -22, count: 5, scale: 0.6 },
-    { x: -16, z: -15, count: 3, scale: 1.0 },
-    { x: 18, z: -6, count: 2, scale: 1.3 },
-    { x: -6, z: -25, count: 4, scale: 0.7 },
-    { x: 11, z: -28, count: 3, scale: 0.9 },
-]
 
 // ── Public interface ─────────────────────────────────────────────
 
@@ -129,30 +118,6 @@ export function createLobbyEnv(scene: Scene): LobbyEnv {
     }, scene)
     border.color = new Color3(GROUND_BORDER_COLOR.r, GROUND_BORDER_COLOR.g, GROUND_BORDER_COLOR.b)
     border.parent = root
-
-    // ── Box clusters — depth cues ────────────────────────────────
-
-    const boxMat = new StandardMaterial('lobbyBoxMat', scene)
-    boxMat.diffuseColor = new Color3(0.03, 0.03, 0.05)
-    boxMat.specularColor = Color3.Black()
-    materials.push(boxMat)
-
-    for (const cluster of BOX_CLUSTERS) {
-        for (let i = 0; i < cluster.count; i++) {
-            const s = cluster.scale * (0.6 + Math.random() * 0.8)
-            const h = s * (0.8 + Math.random() * 1.5)
-            const box = MeshBuilder.CreateBox(`lobbyBox_${cluster.x}_${i}`, {
-                width: s, height: h, depth: s,
-            }, scene)
-            box.position.set(
-                cluster.x + (i - cluster.count / 2) * s * 1.3,
-                h / 2,
-                cluster.z + (Math.random() - 0.5) * 2,
-            )
-            box.material = boxMat
-            box.parent = root
-        }
-    }
 
     // ── Particles — drifting blue dust ────────────────────────────
 
