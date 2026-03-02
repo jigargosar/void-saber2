@@ -7,11 +7,12 @@ import '@babylonjs/core/Helpers/sceneHelpers'
 import '@babylonjs/loaders/glTF'
 import '@babylonjs/core/Materials/Node/Blocks'
 
-import { type Theme, type System, type Teardown } from './types'
+import { type Seed, type Difficulty, type Theme, type System, type Teardown } from './types'
 import { createSplash } from './splash-page/splash'
 import { createLobbyPage } from './lobby-page/lobby-page'
 import { createArenaPage } from './arena-page/arena-page'
 import { createXRSession, type XRSession } from './xr-session'
+import { type Command, type CommandQueue, createCommandQueue } from './command-queue'
 
 const EYE_HEIGHT = 1.6
 
@@ -40,13 +41,14 @@ function setupEngine(): { engine: Engine; scene: Scene } {
 
 type Route =
     | { readonly page: 'lobby' }
-    | { readonly page: 'arena' }
+    | { readonly page: 'arena'; readonly seed: Seed; readonly difficulty: Difficulty }
 
 interface Router {
     activeSystems(): readonly System[]
+    handleCommand(command: Command): void
 }
 
-function createRouter(scene: Scene): Router {
+function createRouter(scene: Scene, queue: CommandQueue): Router {
     let currentSystems: readonly System[] = []
     let teardown: Teardown = () => {}
 
@@ -55,16 +57,14 @@ function createRouter(scene: Scene): Router {
 
         switch (route.page) {
             case 'lobby': {
-                const lobby = createLobbyPage(scene)
+                const lobby = createLobbyPage(scene, queue)
                 currentSystems = lobby.systems
-                lobby.onPlay(() => { navigate({ page: 'arena' }) })
                 teardown = () => { lobby.dispose() }
                 break
             }
             case 'arena': {
-                const arena = createArenaPage(scene, theme, xrSession)
+                const arena = createArenaPage(scene, theme, xrSession, route.seed, route.difficulty, queue)
                 currentSystems = arena.systems
-                arena.onReturnToLobby(() => { navigate({ page: 'lobby' }) })
                 teardown = () => { arena.dispose() }
                 break
             }
@@ -82,8 +82,21 @@ function createRouter(scene: Scene): Router {
         navigate({ page: 'lobby' })
     }).catch(console.error)
 
+    function handleCommand(command: Command): void {
+        switch (command.type) {
+            case 'navigateToArena':
+                navigate({ page: 'arena', seed: command.seed, difficulty: command.difficulty })
+                break
+            case 'returnToLobby':
+            case 'songEnd':
+                navigate({ page: 'lobby' })
+                break
+        }
+    }
+
     return {
         activeSystems() { return currentSystems },
+        handleCommand,
     }
 }
 
@@ -91,9 +104,12 @@ function createRouter(scene: Scene): Router {
 
 function main(): void {
     const { engine, scene } = setupEngine()
-    const router = createRouter(scene)
+    const queue = createCommandQueue()
+    const router = createRouter(scene, queue)
 
     scene.onBeforeRenderObservable.add(() => {
+        queue.drain((command) => router.handleCommand(command))
+
         const dt = engine.getDeltaTime() / 1000
         for (const system of router.activeSystems()) {
             system(dt)

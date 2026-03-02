@@ -4,6 +4,7 @@ import {
     Part, start as startTone, getTransport, getDraw, getDestination,
 } from 'tone'
 import { type Teardown } from '../types'
+import { type CommandQueue } from '../command-queue'
 import { type MusicComposition, type ChordEvent, type NoteEvent, type DrumEvent } from './music-types'
 
 // Transport BPM is fixed — actual timing is pre-baked into absolute event times
@@ -21,7 +22,7 @@ export interface MusicPlayer {
 export function createMusicPlayer(
     composition: MusicComposition,
     onBeat: () => void,
-    onEnd: () => void,
+    queue: CommandQueue,
 ): MusicPlayer {
     const transport = getTransport()
     const parts: Part[] = []
@@ -176,7 +177,7 @@ export function createMusicPlayer(
 
     transport.schedule(() => {
         stop()
-        onEnd()
+        queue.enqueue({ type: 'songEnd' })
     }, composition.totalTime + TAIL_SECONDS)
 
     // ── Transport config ─────────────────────────────────────
