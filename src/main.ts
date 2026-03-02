@@ -55,7 +55,7 @@ function createRouter(scene: Scene): Router {
 
         switch (route.page) {
             case 'lobby': {
-                const lobby = createLobbyPage(scene)
+                const lobby = createLobbyPage(scene, xrSession)
                 currentSystems = lobby.systems
                 lobby.onPlay(() => { navigate({ page: 'arena' }) })
                 teardown = () => { lobby.dispose() }

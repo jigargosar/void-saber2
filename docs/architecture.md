@@ -15,7 +15,7 @@ Boot: splash renders while "Enter VR" button is visible. `createXRSession` resol
 
 Page switching uses a `navigate(route)` switch — pages emit events, routing logic lives in one place. Render loop calls `router.activeSystems()` every frame.
 
-Router owns shared resources that outlive any single page: MusicPlayer and song catalog. Both are created once and passed down to whichever page needs them.
+Router will own shared resources (MusicPlayer, song catalog) in the future. Not yet created.
 
 ## Page Interface
 
@@ -26,9 +26,7 @@ interface Page {
 }
 ```
 
-Pages produce output signals via callback registration (e.g. `lobby.onPlay(selection)`, `arena.onReturnToLobby()`). Router wires these to `navigate()` calls.
-
-Route to arena carries song seed + difficulty. Return to lobby carries nothing.
+Pages produce output signals via single callback (e.g. `lobby.onPlay(cb)`, `arena.onReturnToLobby(cb)`). Bare signals, no payload. Router wires these to `navigate()` calls.
 
 ## Splash Page
 
@@ -36,16 +34,12 @@ Static visuals with pulse animation. No user interaction — exists solely to re
 
 ## Music & Songs
 
-Song catalog lives in `music/songs.ts` — a static list of `{ name, seed }` entries. Shared by both pages.
-
-MusicPlayer is created once by the router and passed to both pages. Lobby uses it for song preview (play/stop as user browses). Arena uses it for full gameplay playback with beat callbacks.
-
-MusicPlayer must support swapping compositions without recreate — Tone.js instruments are the same for every song, only the composition data changes.
+Song catalog, MusicPlayer shape, and music preview — all TBD. See music/ for existing pipeline code.
 
 ## Lobby Page
 
-Music browser + song selection UI. Receives XR session, MusicPlayer + song catalog from router.
-User browses songs (preview plays on select), picks difficulty, triggers transition to Arena with seed + difficulty.
+Song selection UI. Receives XR session from router.
+Hardcoded song list, no music preview. User picks song and difficulty, triggers transition to Arena.
 
 Controllers render as glowing handles emitting a ray for menu interaction (laser pointer). Ray intersects GUI planes for selection. Handles + rays are lobby's own visuals — disposed on page exit, not shared with arena (arena uses sabers instead).
 
@@ -53,7 +47,7 @@ Internal details: no plan doc yet.
 
 ## Arena Page
 
-Gameplay environment. Receives theme, XR session, MusicPlayer, seed, and difficulty from router.
+Gameplay environment. Receives theme and XR session from router.
 
 Internal sub-states: playing, paused, results.
 - playing — game active
@@ -66,7 +60,7 @@ Internal details: no plan doc yet.
 
 ## XR Session
 
-`xr-session.ts` — creates WebXR helper, resolves only when user enters VR. Returns `XRSession` handle with controllers map and add/remove callbacks. Persistent across page transitions — both lobby and arena receive it. Lobby uses controllers for laser pointers, arena for sabers.
+`xr-session.ts` — creates WebXR helper, resolves only when user enters VR. Returns `XRSession` handle with controllers map and `onSqueeze` for grip button events. Persistent across page transitions — both lobby and arena receive it. Lobby uses controllers for laser pointers, arena for sabers. Arena uses `onSqueeze` to return to lobby.
 
 ## Directory Structure
 
