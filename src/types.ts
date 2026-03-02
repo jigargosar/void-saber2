@@ -25,10 +25,6 @@ export type SwingDirection =
     | 'upleft' | 'upright' | 'downleft' | 'downright'
     | 'any'
 
-// ── Game state ──────────────────────────────────────────────
-
-export type GamePhase = 'menu' | 'playing' | 'paused' | 'results'
-
 // ── Theme ────────────────────────────────────────────────────
 
 export interface Theme {

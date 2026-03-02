@@ -1,5 +1,5 @@
 import { type Scene } from '@babylonjs/core/scene'
-import { type Seed, type Difficulty, type Theme, type System, type Teardown } from '../types'
+import { type Seed, type Theme, type System, type Teardown } from '../types'
 import { composeMusic } from '../music/music-composer'
 import { createMusicPlayer } from '../music/music-player'
 import { createStage } from './stage'
@@ -17,7 +17,6 @@ export function createArenaPage(
     theme: Theme,
     xrSession: XRSession,
     seed: Seed,
-    _difficulty: Difficulty,
     queue: CommandQueue,
 ): ArenaPage {
     const stage = createStage(scene, theme)

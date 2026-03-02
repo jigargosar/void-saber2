@@ -1,9 +1,9 @@
-import { type Seed, type Difficulty } from './types'
+import { type Seed } from './types'
 
 // ── Command union ─────────────────────────────────────────
 
 export type Command =
-    | { readonly type: 'songSelected'; readonly seed: Seed; readonly difficulty: Difficulty }
+    | { readonly type: 'songSelected'; readonly seed: Seed }
     | { readonly type: 'arenaSessionCompleted' }
 
 // ── Queue ─────────────────────────────────────────────────

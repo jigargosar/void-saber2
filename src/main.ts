@@ -7,7 +7,7 @@ import '@babylonjs/core/Helpers/sceneHelpers'
 import '@babylonjs/loaders/glTF'
 import '@babylonjs/core/Materials/Node/Blocks'
 
-import { type Seed, type Difficulty, type Theme, type System, type Teardown } from './types'
+import { type Seed, type Theme, type System, type Teardown } from './types'
 import { createSplash } from './splash-page/splash'
 import { createLobbyPage } from './lobby-page/lobby-page'
 import { createArenaPage } from './arena-page/arena-page'
@@ -41,7 +41,7 @@ function setupEngine(): { engine: Engine; scene: Scene } {
 
 type Route =
     | { readonly page: 'lobby' }
-    | { readonly page: 'arena'; readonly seed: Seed; readonly difficulty: Difficulty }
+    | { readonly page: 'arena'; readonly seed: Seed }
 
 interface Router {
     activeSystems(): readonly System[]
@@ -68,7 +68,7 @@ function createRouter(scene: Scene): Router {
                 break
             }
             case 'arena': {
-                activePage = createArenaPage(scene, theme, xrSession, route.seed, route.difficulty, queue)
+                activePage = createArenaPage(scene, theme, xrSession, route.seed, queue)
                 break
             }
         }
@@ -88,7 +88,7 @@ function createRouter(scene: Scene): Router {
     function handleCommand(command: Command): void {
         switch (command.type) {
             case 'songSelected':
-                navigate({ page: 'arena', seed: command.seed, difficulty: command.difficulty })
+                navigate({ page: 'arena', seed: command.seed })
                 break
             case 'arenaSessionCompleted':
                 navigate({ page: 'lobby' })

@@ -6,22 +6,9 @@ import { TextBlock } from '@babylonjs/gui/2D/controls/textBlock'
 import { StackPanel } from '@babylonjs/gui/2D/controls/stackPanel'
 import { Rectangle } from '@babylonjs/gui/2D/controls/rectangle'
 import { Control } from '@babylonjs/gui/2D/controls/control'
-import { type Seed, type Difficulty, type Teardown } from '../types'
+import { type Difficulty, type Teardown } from '../types'
 import { type CommandQueue } from '../command-queue'
-
-// ── Song catalog (hardcoded, will move to music/songs.ts) ────────
-
-const SONGS = [
-    { seed: 42 as Seed, name: 'Neon Pulse' },
-    { seed: 1337 as Seed, name: 'Dark Matter' },
-    { seed: 7890 as Seed, name: 'Cyber Storm' },
-    { seed: 25000 as Seed, name: 'Void Walker' },
-    { seed: 55555 as Seed, name: 'Neural Drift' },
-    { seed: 99999 as Seed, name: 'Shadow Circuit' },
-    { seed: 12345 as Seed, name: 'Ambient Flow' },
-    { seed: 67890 as Seed, name: 'Slow Burn' },
-    { seed: 31415 as Seed, name: 'Deep Fade' },
-] as const
+import { SONGS } from '../music/songs'
 
 // ── Difficulties ────────────────────────────────────────────────
 
@@ -217,7 +204,7 @@ export function createMenu(scene: Scene, queue: CommandQueue): Menu {
 
     playBtn.onPointerClickObservable.add(() => {
         const song = SONGS[selectedSongIdx]
-        queue.enqueue({ type: 'songSelected', seed: song.seed, difficulty: DIFFICULTIES[selectedDiffIdx].key })
+        queue.enqueue({ type: 'songSelected', seed: song.seed })
     })
     playBtn.onPointerEnterObservable.add(() => { playBtn.background = ACCENT_PINK })
     playBtn.onPointerOutObservable.add(() => { playBtn.background = ACCENT })
