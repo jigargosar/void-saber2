@@ -3,22 +3,48 @@ import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight'
+import { SpotLight } from '@babylonjs/core/Lights/spotLight'
 import { GlowLayer } from '@babylonjs/core/Layers/glowLayer'
 import { Vector3, Color3, Color4 } from '@babylonjs/core/Maths/math'
 import { type Light } from '@babylonjs/core/Lights/light'
 import { type Teardown } from '../types'
 
-// ── Constants ────────────────────────────────────────────────────
+// ── Scene atmosphere ─────────────────────────────────────────────
 
-const BG = new Color3(0.01, 0.01, 0.03)
-const FOG_DENSITY = 0.025
-const PLATFORM_RADIUS = 6
-const PILLAR_COUNT = 6
-const PILLAR_DISTANCE = 7
-const PILLAR_HEIGHT = 7
-const PILLAR_DIAMETER = 0.08
-const PILLAR_GLOW = new Color3(0.15, 0.05, 0.4)
-const EDGE_GLOW = new Color3(0.08, 0.04, 0.25)
+const BG = new Color3(0.02, 0.01, 0.05)          // dark purple
+const FOG_DENSITY = 0.035
+
+// ── Wireframe border ─────────────────────────────────────────────
+
+const BORDER_W = 5                                // meters, x-axis
+const BORDER_D = 4                                // meters, z-axis
+const BORDER_THICKNESS = 0.02
+const BORDER_HEIGHT = 0.01
+const BORDER_GLOW = new Color3(0.1, 0.4, 0.5)    // teal
+
+// ── Distant box clusters (depth cues) ────────────────────────────
+// Asymmetric groups at varying distances. Fogged out.
+// Imply ground plane existence without a visible floor surface.
+
+const BOX_CLUSTERS = [
+    // Front-right
+    { x: 12, z: -8, w: 2, h: 3, d: 2 },
+    { x: 14, z: -7, w: 1.5, h: 2, d: 1.5 },
+    { x: 13, z: -9.5, w: 1, h: 1.5, d: 1 },
+    // Right side
+    { x: 18, z: 2, w: 2.5, h: 4, d: 2 },
+    { x: 16, z: 3, w: 1.5, h: 2.5, d: 1.5 },
+    // Behind-left
+    { x: -10, z: 12, w: 3, h: 3.5, d: 2.5 },
+    { x: -8, z: 14, w: 1.5, h: 2, d: 1.5 },
+    { x: -12, z: 13, w: 2, h: 4, d: 2 },
+    // Behind-right
+    { x: 8, z: 15, w: 2, h: 3, d: 2.5 },
+    { x: 10, z: 16, w: 1.5, h: 2, d: 1 },
+    // Far left
+    { x: -16, z: -3, w: 2, h: 3.5, d: 2 },
+    { x: -18, z: -1, w: 1, h: 2, d: 1.5 },
+] as const
 
 // ── Public interface ─────────────────────────────────────────────
 
@@ -40,15 +66,31 @@ export function createLobbyEnv(scene: Scene): LobbyEnv {
 
     // ── Lighting ────────────────────────────────────────────────
 
+    // Dim purple ambient — just enough to faintly see box silhouettes
     const hemi = new HemisphericLight('lobbyHemi', new Vector3(0, 1, 0), scene)
-    hemi.intensity = 0.06
+    hemi.intensity = 0.02
+    hemi.diffuse = new Color3(0.2, 0.1, 0.4)
     lights.push(hemi)
 
+    // Blue/teal spotlight from above menu area, pointing down
+    const spot = new SpotLight(
+        'lobbySpot',
+        new Vector3(0, 12, -1),                       // above/behind menu panels
+        new Vector3(0, -1, -0.2).normalize(),         // down, slightly forward
+        Math.PI / 3,                                  // 60° cone
+        2,                                            // falloff exponent
+        scene,
+    )
+    spot.diffuse = new Color3(0.2, 0.6, 0.8)         // blue/teal
+    spot.intensity = 3
+    lights.push(spot)
+
+    // Glow layer for wireframe border and UI emissives
     const glow = new GlowLayer('lobbyGlow', scene, {
         mainTextureSamples: 4,
         blurKernelSize: 64,
     })
-    glow.intensity = 1.0
+    glow.intensity = 1.2
     glow.customEmissiveColorSelector = (mesh, _subMesh, _material, result) => {
         if (mesh.material instanceof StandardMaterial) {
             const ec = mesh.material.emissiveColor
@@ -58,59 +100,47 @@ export function createLobbyEnv(scene: Scene): LobbyEnv {
         }
     }
 
-    // ── Platform ────────────────────────────────────────────────
+    // ── Wireframe border (4 emissive edges, no floor surface) ───
 
-    const platformMat = new StandardMaterial('lobbyPlatformMat', scene)
-    platformMat.diffuseColor = new Color3(0.02, 0.02, 0.04)
-    platformMat.specularColor = Color3.Black()
-    materials.push(platformMat)
+    const borderMat = new StandardMaterial('lobbyBorderMat', scene)
+    borderMat.emissiveColor = BORDER_GLOW
+    borderMat.disableLighting = true
+    materials.push(borderMat)
 
-    const platform = MeshBuilder.CreateDisc('lobbyPlatform', {
-        radius: PLATFORM_RADIUS,
-        tessellation: 64,
-    }, scene)
-    platform.rotation.x = Math.PI / 2
-    platform.material = platformMat
-    platform.parent = root
+    const halfW = BORDER_W / 2
+    const halfD = BORDER_D / 2
+    const borderEdges = [
+        { w: BORDER_W, d: BORDER_THICKNESS, x: 0, z: -halfD },  // front
+        { w: BORDER_W, d: BORDER_THICKNESS, x: 0, z: halfD },   // back
+        { w: BORDER_THICKNESS, d: BORDER_D, x: -halfW, z: 0 },  // left
+        { w: BORDER_THICKNESS, d: BORDER_D, x: halfW, z: 0 },   // right
+    ]
 
-    // ── Platform edge ring ──────────────────────────────────────
-
-    const edgeMat = new StandardMaterial('lobbyEdgeMat', scene)
-    edgeMat.emissiveColor = EDGE_GLOW
-    edgeMat.disableLighting = true
-    materials.push(edgeMat)
-
-    const edgeRing = MeshBuilder.CreateTorus('lobbyEdge', {
-        diameter: PLATFORM_RADIUS * 2,
-        thickness: 0.04,
-        tessellation: 64,
-    }, scene)
-    edgeRing.position.y = 0.01
-    edgeRing.material = edgeMat
-    edgeRing.parent = root
-
-    // ── Pillars (semicircle behind player) ──────────────────────
-    // Arc from left (-90°) through behind (0°) to right (+90°),
-    // leaving the front clear for menu panels.
-
-    const pillarMat = new StandardMaterial('lobbyPillarMat', scene)
-    pillarMat.emissiveColor = PILLAR_GLOW
-    pillarMat.disableLighting = true
-    materials.push(pillarMat)
-
-    for (let i = 0; i < PILLAR_COUNT; i++) {
-        const angle = ((i / (PILLAR_COUNT - 1)) * 180 - 90) * Math.PI / 180
-        const x = Math.sin(angle) * PILLAR_DISTANCE
-        const z = Math.cos(angle) * PILLAR_DISTANCE
-
-        const pillar = MeshBuilder.CreateCylinder(`lobbyPillar${i}`, {
-            height: PILLAR_HEIGHT,
-            diameter: PILLAR_DIAMETER,
-            tessellation: 12,
+    for (let i = 0; i < borderEdges.length; i++) {
+        const e = borderEdges[i]
+        const edge = MeshBuilder.CreateBox(`lobbyEdge${i}`, {
+            width: e.w, height: BORDER_HEIGHT, depth: e.d,
         }, scene)
-        pillar.position.set(x, PILLAR_HEIGHT / 2, z)
-        pillar.material = pillarMat
-        pillar.parent = root
+        edge.position.set(e.x, BORDER_HEIGHT / 2, e.z)
+        edge.material = borderMat
+        edge.parent = root
+    }
+
+    // ── Box clusters (depth cues) ───────────────────────────────
+
+    const boxMat = new StandardMaterial('lobbyBoxMat', scene)
+    boxMat.diffuseColor = new Color3(0.03, 0.03, 0.05)
+    boxMat.specularColor = Color3.Black()
+    materials.push(boxMat)
+
+    for (let i = 0; i < BOX_CLUSTERS.length; i++) {
+        const b = BOX_CLUSTERS[i]
+        const box = MeshBuilder.CreateBox(`lobbyBox${i}`, {
+            width: b.w, height: b.h, depth: b.d,
+        }, scene)
+        box.position.set(b.x, b.h / 2, b.z)
+        box.material = boxMat
+        box.parent = root
     }
 
     // ── Handle ──────────────────────────────────────────────────

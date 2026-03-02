@@ -1,10 +1,8 @@
-import { Scene } from '@babylonjs/core/scene'
-import { Color4 } from '@babylonjs/core/Maths/math'
+import { type Scene } from '@babylonjs/core/scene'
 import { type System, type Teardown } from '../types'
 import { type XRSession } from '../xr-session'
+import { createLobbyEnv } from './lobby-env'
 import { createMenu } from './menu'
-
-const LOBBY_BG = new Color4(0.1, 0.1, 0.12, 1)
 
 export interface LobbyPage {
     readonly systems: readonly System[]
@@ -13,13 +11,11 @@ export interface LobbyPage {
 }
 
 export function createLobbyPage(scene: Scene, xrSession: XRSession): LobbyPage {
-    scene.clearColor = LOBBY_BG
-    scene.fogMode = Scene.FOGMODE_NONE
-
+    const env = createLobbyEnv(scene)
     const menu = createMenu(scene)
     const playListeners = new Set<() => void>()
 
-    // Squeeze grip to start playing
+    // Squeeze grip to start playing (temporary — phase 2 replaces with laser pointer)
     const squeezeTeardown = xrSession.onSqueeze(() => {
         for (const cb of playListeners) cb()
     })
@@ -35,6 +31,7 @@ export function createLobbyPage(scene: Scene, xrSession: XRSession): LobbyPage {
             squeezeTeardown()
             playListeners.clear()
             menu.dispose()
+            env.dispose()
         },
     }
 }
