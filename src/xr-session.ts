@@ -26,7 +26,7 @@ export function createXRSession(scene: Scene): Promise<XRSession> {
             inputOptions: {
                 doNotLoadControllerMeshes: true,
                 disableControllerAnimation: true,
-                disableOnlineControllerRepository: true,
+                disableOnlineControllerRepository: false,
             },
         }).then((xr) => {
             const controllers = new Map<Hand, TransformNode>()
@@ -37,21 +37,16 @@ export function createXRSession(scene: Scene): Promise<XRSession> {
                 if (!isHand(hand) || !source.grip) return
                 controllers.set(hand, source.grip)
 
-                function listenSqueeze(mc: NonNullable<typeof source.motionController>): void {
-                    if (!mc.getComponentIds().includes('xr-standard-squeeze')) return
-                    const squeeze = mc.getComponent('xr-standard-squeeze')
+                source.onMotionControllerInitObservable.add((motionController) => {
+                    const squeeze = motionController.getComponentOfType('squeeze')
+                    if (!squeeze) return
                     squeeze.onButtonStateChangedObservable.add((component) => {
+                        console.log(`[XR] ${hand} squeeze: pressed=${component.pressed} hasChanges=${component.hasChanges} changes.pressed=${JSON.stringify(component.changes.pressed)} changes.value=${JSON.stringify(component.changes.value)}`)
                         if (component.changes.pressed?.current) {
                             for (const cb of squeezeListeners) cb()
                         }
                     })
-                }
-
-                if (source.motionController) {
-                    listenSqueeze(source.motionController)
-                } else {
-                    source.onMotionControllerInitObservable.addOnce(listenSqueeze)
-                }
+                })
             })
 
             const session: XRSession = {

@@ -80,6 +80,9 @@ function createRouter(scene: Scene): Router {
         xrSession = session
         splash.dispose()
         navigate({ page: 'lobby' })
+
+        // DEBUG: auto-navigate to arena after 3s (bypass grip)
+        setTimeout(() => { navigate({ page: 'arena' }) }, 3000)
     }).catch(console.error)
 
     return {
