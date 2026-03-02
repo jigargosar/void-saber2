@@ -1,8 +1,8 @@
 import { type Scene } from '@babylonjs/core/scene'
-import { type Seed, type System, type Teardown } from '../types'
+import { type System, type Teardown } from '../types'
 import { type CommandQueue } from '../command-queue'
 import { createLobbyEnv } from './lobby-env'
-// import { createMenu } from './menu'  // hidden while building env
+import { createMenu } from './menu'
 
 export interface LobbyPage {
     readonly systems: readonly System[]
@@ -11,21 +11,13 @@ export interface LobbyPage {
 
 export function createLobbyPage(scene: Scene, queue: CommandQueue): LobbyPage {
     const env = createLobbyEnv(scene)
-    // const menu = createMenu(scene)  // hidden while building env
-
-    const onKey = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') {
-            queue.enqueue({ type: 'navigateToArena', seed: 42 as Seed, difficulty: 'medium' })
-        }
-    }
-    document.addEventListener('keydown', onKey)
+    const menu = createMenu(scene, queue)
 
     return {
         systems: [],
 
         dispose() {
-            document.removeEventListener('keydown', onKey)
-            // menu.dispose()  // hidden while building env
+            menu.dispose()
             env.dispose()
         },
     }

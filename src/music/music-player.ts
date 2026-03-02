@@ -177,7 +177,7 @@ export function createMusicPlayer(
 
     transport.schedule(() => {
         stop()
-        queue.enqueue({ type: 'songEnd' })
+        queue.enqueue({ type: 'arenaSessionCompleted' })
     }, composition.totalTime + TAIL_SECONDS)
 
     // ── Transport config ─────────────────────────────────────

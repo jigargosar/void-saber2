@@ -7,6 +7,7 @@ import { StackPanel } from '@babylonjs/gui/2D/controls/stackPanel'
 import { Rectangle } from '@babylonjs/gui/2D/controls/rectangle'
 import { Control } from '@babylonjs/gui/2D/controls/control'
 import { type Seed, type Difficulty, type Teardown } from '../types'
+import { type CommandQueue } from '../command-queue'
 
 // ── Song catalog (hardcoded, will move to music/songs.ts) ────────
 
@@ -76,17 +77,15 @@ const RIGHT_TEX_H = 960
 // ── Public interface ─────────────────────────────────────────────
 
 export interface Menu {
-    onPlay(callback: (seed: Seed, difficulty: Difficulty) => void): Teardown
     dispose: Teardown
 }
 
-export function createMenu(scene: Scene): Menu {
+export function createMenu(scene: Scene, queue: CommandQueue): Menu {
 
     // ── State ────────────────────────────────────────────────────
 
     let selectedSongIdx = 0
     let selectedDiffIdx = 1   // 'normal' by default
-    const playListeners = new Set<(seed: Seed, difficulty: Difficulty) => void>()
 
     // ── Left panel (song list) ───────────────────────────────────
 
@@ -230,7 +229,7 @@ export function createMenu(scene: Scene): Menu {
     playBtn.onPointerClickObservable.add(() => {
         const song = SONGS[selectedSongIdx]
         const diff = DIFFICULTY_TO_GAME[DIFFICULTIES[selectedDiffIdx].key]
-        for (const cb of playListeners) cb(song.seed, diff)
+        queue.enqueue({ type: 'songSelected', seed: song.seed, difficulty: diff })
     })
     playBtn.onPointerEnterObservable.add(() => { playBtn.background = ACCENT_PINK })
     playBtn.onPointerOutObservable.add(() => { playBtn.background = ACCENT })
@@ -259,13 +258,7 @@ export function createMenu(scene: Scene): Menu {
     // ── Handle ───────────────────────────────────────────────────
 
     return {
-        onPlay(callback) {
-            playListeners.add(callback)
-            return () => { playListeners.delete(callback) }
-        },
-
         dispose() {
-            playListeners.clear()
             leftTex.dispose()
             leftPlane.dispose()
             rightTex.dispose()

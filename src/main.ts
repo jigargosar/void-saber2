@@ -87,11 +87,10 @@ function createRouter(scene: Scene): Router {
 
     function handleCommand(command: Command): void {
         switch (command.type) {
-            case 'navigateToArena':
+            case 'songSelected':
                 navigate({ page: 'arena', seed: command.seed, difficulty: command.difficulty })
                 break
-            case 'returnToLobby':
-            case 'songEnd':
+            case 'arenaSessionCompleted':
                 navigate({ page: 'lobby' })
                 break
         }

@@ -38,7 +38,7 @@ export function createArenaPage(
 
     const onKey = (e: KeyboardEvent) => {
         if (e.key === 'Escape') {
-            queue.enqueue({ type: 'returnToLobby' })
+            queue.enqueue({ type: 'arenaSessionCompleted' })
         }
     }
     document.addEventListener('keydown', onKey)

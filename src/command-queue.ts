@@ -3,9 +3,8 @@ import { type Seed, type Difficulty } from './types'
 // ── Command union ─────────────────────────────────────────
 
 export type Command =
-    | { readonly type: 'navigateToArena'; readonly seed: Seed; readonly difficulty: Difficulty }
-    | { readonly type: 'returnToLobby' }
-    | { readonly type: 'songEnd' }
+    | { readonly type: 'songSelected'; readonly seed: Seed; readonly difficulty: Difficulty }
+    | { readonly type: 'arenaSessionCompleted' }
 
 // ── Queue ─────────────────────────────────────────────────
 
