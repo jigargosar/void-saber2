@@ -38,44 +38,43 @@ function setupEngine(): { engine: Engine; scene: Scene } {
 
 // ── Router (manages page switching, lives in main) ──────────
 
+type SystemsSetter = (systems: readonly System[]) => void
+
 interface Router {
-    readonly systems: readonly System[]
     dispose: Teardown
 }
 
 function createRouter(
     scene: Scene,
     xrSession: XRSession,
+    setSystems: SystemsSetter,
 ): Router {
-    const state = { systems: [] as readonly System[], teardown: (() => {}) as Teardown }
+    let teardown: Teardown = () => {}
 
     function showLobby(): void {
-        state.teardown()
+        teardown()
         const lobby = createLobbyPage(scene)
-        state.systems = lobby.systems
+        setSystems(lobby.systems)
         lobby.onPlay((_seed, _difficulty) => {
             showArena()
         })
-        state.teardown = () => { lobby.dispose() }
+        teardown = () => { lobby.dispose() }
     }
 
     function showArena(): void {
-        state.teardown()
+        teardown()
         const arena = createArenaPage(scene, theme, xrSession)
-        state.systems = arena.systems
+        setSystems(arena.systems)
         arena.onReturnToLobby(() => { showLobby() })
-        state.teardown = () => { arena.dispose() }
+        teardown = () => { arena.dispose() }
     }
 
     showLobby()
 
     return {
-        get systems() { return state.systems },
-
         dispose() {
-            state.teardown()
-            state.systems = []
-            state.teardown = () => {}
+            teardown()
+            setSystems([])
         },
     }
 }
@@ -103,9 +102,8 @@ async function main(): Promise<void> {
     const xrSession = await createXRSession(scene)
     splash.dispose()
 
-    // Router takes over — lobby first
-    const router = createRouter(scene, xrSession)
-    systems = router.systems
+    // Router takes over — lobby first, updates systems on every page switch
+    createRouter(scene, xrSession, (s) => { systems = s })
 }
 
 main().catch(console.error)
