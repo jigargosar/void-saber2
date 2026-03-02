@@ -55,7 +55,7 @@ function createRouter(scene: Scene): Router {
 
         switch (route.page) {
             case 'lobby': {
-                const lobby = createLobbyPage(scene, xrSession)
+                const lobby = createLobbyPage(scene)
                 currentSystems = lobby.systems
                 lobby.onPlay(() => { navigate({ page: 'arena' }) })
                 teardown = () => { lobby.dispose() }
@@ -80,9 +80,6 @@ function createRouter(scene: Scene): Router {
         xrSession = session
         splash.dispose()
         navigate({ page: 'lobby' })
-
-        // DEBUG: auto-navigate to arena after 3s (bypass grip)
-        setTimeout(() => { navigate({ page: 'arena' }) }, 3000)
     }).catch(console.error)
 
     return {

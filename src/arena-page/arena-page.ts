@@ -37,11 +37,6 @@ export function createArenaPage(
         sabers.attach(hand, grip)
     }
 
-    // Squeeze grip to return to lobby
-    const squeezeTeardown = xrSession.onSqueeze(() => {
-        for (const cb of returnListeners) cb()
-    })
-
     // Escape key to return to lobby (dev shortcut)
     const onKey = (e: KeyboardEvent) => {
         if (e.key === 'Escape') {
@@ -62,7 +57,6 @@ export function createArenaPage(
 
         dispose() {
             document.removeEventListener('keydown', onKey)
-            squeezeTeardown()
             returnListeners.clear()
             musicPlayer.dispose()
             for (const [hand] of xrSession.controllers) {

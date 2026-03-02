@@ -10,8 +10,6 @@ import { type MusicComposition, type ChordEvent, type NoteEvent, type DrumEvent 
 const TRANSPORT_BPM = 128
 // Seconds of silence after song ends before full stop
 const TAIL_SECONDS = 1.5
-const MASTER_VOLUME = 0.4
-
 // ── Public interface ─────────────────────────────────────────
 
 export interface MusicPlayer {

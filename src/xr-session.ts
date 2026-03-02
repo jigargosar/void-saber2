@@ -6,7 +6,6 @@ import { type Hand, type Teardown, isHand } from './types'
 
 export interface XRSession {
     readonly controllers: ReadonlyMap<Hand, TransformNode>
-    onSqueeze(callback: () => void): Teardown
     dispose: Teardown
 }
 
@@ -30,35 +29,17 @@ export function createXRSession(scene: Scene): Promise<XRSession> {
             },
         }).then((xr) => {
             const controllers = new Map<Hand, TransformNode>()
-            const squeezeListeners = new Set<() => void>()
 
             xr.input.onControllerAddedObservable.add((source) => {
                 const hand = source.inputSource.handedness
                 if (!isHand(hand) || !source.grip) return
                 controllers.set(hand, source.grip)
-
-                source.onMotionControllerInitObservable.add((motionController) => {
-                    const squeeze = motionController.getComponentOfType('squeeze')
-                    if (!squeeze) return
-                    squeeze.onButtonStateChangedObservable.add((component) => {
-                        console.log(`[XR] ${hand} squeeze: pressed=${component.pressed} hasChanges=${component.hasChanges} changes.pressed=${JSON.stringify(component.changes.pressed)} changes.value=${JSON.stringify(component.changes.value)}`)
-                        if (component.changes.pressed?.current) {
-                            for (const cb of squeezeListeners) cb()
-                        }
-                    })
-                })
             })
 
             const session: XRSession = {
                 controllers,
 
-                onSqueeze(callback) {
-                    squeezeListeners.add(callback)
-                    return () => { squeezeListeners.delete(callback) }
-                },
-
                 dispose() {
-                    squeezeListeners.clear()
                     controllers.clear()
                     xr.dispose()
                 },
