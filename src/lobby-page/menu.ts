@@ -3,43 +3,75 @@ import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
 import { Vector3 } from '@babylonjs/core/Maths/math'
 import { AdvancedDynamicTexture } from '@babylonjs/gui/2D/advancedDynamicTexture'
 import { TextBlock } from '@babylonjs/gui/2D/controls/textBlock'
-import { Button } from '@babylonjs/gui/2D/controls/button'
 import { StackPanel } from '@babylonjs/gui/2D/controls/stackPanel'
 import { Rectangle } from '@babylonjs/gui/2D/controls/rectangle'
-import { RadioButton } from '@babylonjs/gui/2D/controls/radioButton'
 import { Control } from '@babylonjs/gui/2D/controls/control'
 import { type Seed, type Difficulty, type Teardown } from '../types'
 
-// ── Song catalog ─────────────────────────────────────────────────
+// ── Song catalog (hardcoded, will move to music/songs.ts) ────────
 
-const SONG_CATALOG = [
+const SONGS = [
     { seed: 42 as Seed, name: 'Neon Pulse' },
     { seed: 1337 as Seed, name: 'Dark Matter' },
     { seed: 7890 as Seed, name: 'Cyber Storm' },
     { seed: 25000 as Seed, name: 'Void Walker' },
     { seed: 55555 as Seed, name: 'Neural Drift' },
+    { seed: 99999 as Seed, name: 'Shadow Circuit' },
+    { seed: 12345 as Seed, name: 'Ambient Flow' },
+    { seed: 67890 as Seed, name: 'Slow Burn' },
+    { seed: 31415 as Seed, name: 'Deep Fade' },
 ] as const
 
-// ── Colors (dark purple/blue corridor theme) ─────────────────────
+// ── Local difficulty (5-level display, maps to 3-level Difficulty) ──
+
+type LobbyDifficulty = 'easy' | 'normal' | 'hard' | 'expert' | 'expertPlus'
+
+const DIFFICULTIES: readonly { readonly key: LobbyDifficulty; readonly label: string }[] = [
+    { key: 'easy', label: 'Easy' },
+    { key: 'normal', label: 'Normal' },
+    { key: 'hard', label: 'Hard' },
+    { key: 'expert', label: 'Expert' },
+    { key: 'expertPlus', label: 'Expert+' },
+]
+
+// Expert/Expert+ map to 'hard' until types.ts is expanded
+const DIFFICULTY_TO_GAME: Record<LobbyDifficulty, Difficulty> = {
+    easy: 'easy',
+    normal: 'medium',
+    hard: 'hard',
+    expert: 'hard',
+    expertPlus: 'hard',
+}
+
+// ── Colors ───────────────────────────────────────────────────────
 
 const BG_COLOR = 'rgba(8, 4, 24, 0.92)'
 const ACCENT = '#00e5ff'
 const ACCENT_DIM = '#00809a'
 const ACCENT_PINK = '#f500b3'
-const TEXT_COLOR = '#e0e0e0'
+const TEXT_PRIMARY = '#e0e0e0'
+const TEXT_DIM = '#888888'
 const SELECTED_BG = 'rgba(0, 229, 255, 0.15)'
 const HOVER_BG = 'rgba(0, 229, 255, 0.08)'
+const DIFF_SELECTED_BG = 'rgba(0, 229, 255, 0.25)'
 const FONT = 'Consolas, monospace'
 
-// ── Menu panel dimensions ────────────────────────────────────────
+// ── Panel geometry ───────────────────────────────────────────────
 
-const PANEL_WIDTH = 2          // meters
-const PANEL_HEIGHT = 1.5       // meters
-const PANEL_Y = 1.4            // eye level
-const PANEL_Z = -3             // 3m in front of player
-const PANEL_TILT_X = 0.1       // slight tilt toward player (radians)
-const TEXTURE_WIDTH = 1024
-const TEXTURE_HEIGHT = 768
+const LEFT_WIDTH = 1.1            // meters
+const LEFT_HEIGHT = 1.4
+const LEFT_X = -0.65
+const RIGHT_WIDTH = 0.9
+const RIGHT_HEIGHT = 1.2
+const RIGHT_X = 0.6
+const PANEL_Y = 1.35              // eye height center
+const PANEL_Z = -2.5              // distance from player
+const PANEL_TILT = 0.08           // slight tilt toward player (radians)
+
+const LEFT_TEX_W = 880
+const LEFT_TEX_H = 1120
+const RIGHT_TEX_W = 720
+const RIGHT_TEX_H = 960
 
 // ── Public interface ─────────────────────────────────────────────
 
@@ -49,174 +81,182 @@ export interface Menu {
 }
 
 export function createMenu(scene: Scene): Menu {
-    // State
-    let selectedSongIndex = 0
-    let selectedDifficulty: Difficulty = 'medium'
+
+    // ── State ────────────────────────────────────────────────────
+
+    let selectedSongIdx = 0
+    let selectedDiffIdx = 1   // 'normal' by default
     const playListeners = new Set<(seed: Seed, difficulty: Difficulty) => void>()
 
-    // 3D plane for GUI
-    const plane = MeshBuilder.CreatePlane('menuPlane', {
-        width: PANEL_WIDTH,
-        height: PANEL_HEIGHT,
-    }, scene)
-    plane.position = new Vector3(0, PANEL_Y, PANEL_Z)
-    plane.rotation.y = Math.PI          // face toward player (camera at z=0)
-    plane.rotation.x = PANEL_TILT_X
+    // ── Left panel (song list) ───────────────────────────────────
 
-    // GUI texture
-    const texture = AdvancedDynamicTexture.CreateForMesh(
-        plane,
-        TEXTURE_WIDTH,
-        TEXTURE_HEIGHT,
+    const leftPlane = MeshBuilder.CreatePlane('menuLeft', {
+        width: LEFT_WIDTH, height: LEFT_HEIGHT,
+    }, scene)
+    leftPlane.position = new Vector3(LEFT_X, PANEL_Y, PANEL_Z)
+    leftPlane.rotation.y = Math.PI
+    leftPlane.rotation.x = PANEL_TILT
+
+    const leftTex = AdvancedDynamicTexture.CreateForMesh(
+        leftPlane, LEFT_TEX_W, LEFT_TEX_H,
     )
 
-    // ── Root container ───────────────────────────────────────────
+    const leftRoot = makePanel('leftRoot')
+    leftTex.addControl(leftRoot)
 
-    const root = new Rectangle('menuRoot')
-    root.width = 1
-    root.height = 1
-    root.background = BG_COLOR
-    root.color = ACCENT_DIM
-    root.thickness = 2
-    root.cornerRadius = 8
-    texture.addControl(root)
+    const leftLayout = new StackPanel('leftLayout')
+    leftLayout.width = '92%'
+    leftLayout.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP
+    leftLayout.paddingTopInPixels = 30
+    leftRoot.addControl(leftLayout)
 
-    const layout = new StackPanel('menuLayout')
-    layout.width = '90%'
-    layout.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP
-    layout.paddingTopInPixels = 30
-    root.addControl(layout)
+    // Section title
+    const songsTitle = makeText('songsTitle', 'SONGS', 32, TEXT_DIM)
+    songsTitle.heightInPixels = 50
+    songsTitle.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT
+    leftLayout.addControl(songsTitle)
 
-    // ── Title ────────────────────────────────────────────────────
+    addSpacer(leftLayout, 12)
 
-    const title = new TextBlock('menuTitle', 'VOID SABER')
-    title.fontFamily = FONT
-    title.fontSize = 52
-    title.color = ACCENT
-    title.heightInPixels = 70
-    title.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER
-    layout.addControl(title)
+    // Song rows
+    const songRows: Rectangle[] = []
 
-    addSpacer(layout, 20)
+    for (let i = 0; i < SONGS.length; i++) {
+        const row = makeSongRow(SONGS[i].name, i === selectedSongIdx)
+        songRows.push(row)
 
-    // ── Song list ────────────────────────────────────────────────
-
-    const songButtons: Rectangle[] = []
-
-    for (let i = 0; i < SONG_CATALOG.length; i++) {
-        const song = SONG_CATALOG[i]
-        const row = createSongRow(song.name, i === selectedSongIndex)
-        songButtons.push(row)
-
-        row.onPointerClickObservable.add(() => {
-            selectedSongIndex = i
-            updateSongSelection()
-        })
+        row.onPointerClickObservable.add(() => { selectSong(i) })
         row.onPointerEnterObservable.add(() => {
-            if (i !== selectedSongIndex) row.background = HOVER_BG
+            if (i !== selectedSongIdx) row.background = HOVER_BG
         })
         row.onPointerOutObservable.add(() => {
-            if (i !== selectedSongIndex) row.background = 'transparent'
+            if (i !== selectedSongIdx) row.background = 'transparent'
         })
 
-        layout.addControl(row)
+        leftLayout.addControl(row)
     }
 
-    function updateSongSelection(): void {
-        for (let i = 0; i < songButtons.length; i++) {
-            const isSelected = i === selectedSongIndex
-            songButtons[i].background = isSelected ? SELECTED_BG : 'transparent'
-            songButtons[i].color = isSelected ? ACCENT : ACCENT_DIM
-        }
-    }
+    // ── Right panel (details + actions) ──────────────────────────
 
-    addSpacer(layout, 16)
+    const rightPlane = MeshBuilder.CreatePlane('menuRight', {
+        width: RIGHT_WIDTH, height: RIGHT_HEIGHT,
+    }, scene)
+    rightPlane.position = new Vector3(RIGHT_X, PANEL_Y, PANEL_Z)
+    rightPlane.rotation.y = Math.PI
+    rightPlane.rotation.x = PANEL_TILT
 
-    // ── Difficulty selector ──────────────────────────────────────
+    const rightTex = AdvancedDynamicTexture.CreateForMesh(
+        rightPlane, RIGHT_TEX_W, RIGHT_TEX_H,
+    )
 
-    const diffLabel = new TextBlock('diffLabel', 'DIFFICULTY')
-    diffLabel.fontFamily = FONT
-    diffLabel.fontSize = 20
-    diffLabel.color = TEXT_COLOR
-    diffLabel.heightInPixels = 30
-    diffLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT
-    layout.addControl(diffLabel)
+    const rightRoot = makePanel('rightRoot')
+    rightTex.addControl(rightRoot)
 
-    addSpacer(layout, 8)
+    const rightLayout = new StackPanel('rightLayout')
+    rightLayout.width = '88%'
+    rightLayout.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP
+    rightLayout.paddingTopInPixels = 50
+    rightRoot.addControl(rightLayout)
 
+    // Selected song title (updates on selection)
+    const songTitle = makeText('songTitle', SONGS[0].name, 44, ACCENT)
+    songTitle.heightInPixels = 70
+    songTitle.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER
+    songTitle.textWrapping = true
+    rightLayout.addControl(songTitle)
+
+    addSpacer(rightLayout, 12)
+
+    // "DIFFICULTY" label
+    const diffLabel = makeText('diffLabel', 'DIFFICULTY', 20, TEXT_DIM)
+    diffLabel.heightInPixels = 35
+    diffLabel.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER
+    rightLayout.addControl(diffLabel)
+
+    addSpacer(rightLayout, 8)
+
+    // Difficulty button row
     const diffRow = new StackPanel('diffRow')
     diffRow.isVertical = false
-    diffRow.heightInPixels = 40
-    diffRow.widthInPixels = TEXTURE_WIDTH * 0.85
-    layout.addControl(diffRow)
+    diffRow.heightInPixels = 55
+    diffRow.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER
+    rightLayout.addControl(diffRow)
 
-    const difficulties: Difficulty[] = ['easy', 'medium', 'hard']
-    for (const diff of difficulties) {
-        const radioContainer = new StackPanel(`radio_${diff}`)
-        radioContainer.isVertical = false
-        radioContainer.widthInPixels = 180
-        radioContainer.heightInPixels = 36
+    const diffButtons: Rectangle[] = []
 
-        const radio = new RadioButton(`radioBtn_${diff}`)
-        radio.widthInPixels = 20
-        radio.heightInPixels = 20
-        radio.color = ACCENT
-        radio.background = BG_COLOR
-        radio.isChecked = diff === selectedDifficulty
-        radio.group = 'difficulty'
-        radio.onIsCheckedChangedObservable.add((checked) => {
-            if (checked) selectedDifficulty = diff
+    for (let i = 0; i < DIFFICULTIES.length; i++) {
+        const btn = makeDiffButton(DIFFICULTIES[i].label, i === selectedDiffIdx)
+        diffButtons.push(btn)
+
+        btn.onPointerClickObservable.add(() => { selectDifficulty(i) })
+        btn.onPointerEnterObservable.add(() => {
+            if (i !== selectedDiffIdx) btn.background = HOVER_BG
         })
-        radioContainer.addControl(radio)
+        btn.onPointerOutObservable.add(() => {
+            if (i !== selectedDiffIdx) btn.background = 'transparent'
+        })
 
-        const label = new TextBlock(`radioLabel_${diff}`, diff.toUpperCase())
-        label.fontFamily = FONT
-        label.fontSize = 18
-        label.color = TEXT_COLOR
-        label.widthInPixels = 140
-        label.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT
-        label.paddingLeftInPixels = 8
-        radioContainer.addControl(label)
-
-        diffRow.addControl(radioContainer)
+        diffRow.addControl(btn)
     }
 
-    addSpacer(layout, 16)
+    addSpacer(rightLayout, 40)
 
-    // ── High score display (mock) ────────────────────────────────
+    // High score (mock)
+    const scoreLine = makeText('scoreLine', 'HIGH SCORE  --', 22, TEXT_DIM)
+    scoreLine.heightInPixels = 35
+    scoreLine.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER
+    rightLayout.addControl(scoreLine)
 
-    const scoreDisplay = new TextBlock('scoreDisplay', 'High Score: --    Streak: --')
-    scoreDisplay.fontFamily = FONT
-    scoreDisplay.fontSize = 20
-    scoreDisplay.color = ACCENT_DIM
-    scoreDisplay.heightInPixels = 30
-    scoreDisplay.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER
-    layout.addControl(scoreDisplay)
+    const streakLine = makeText('streakLine', 'MAX STREAK  --', 22, TEXT_DIM)
+    streakLine.heightInPixels = 35
+    streakLine.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER
+    rightLayout.addControl(streakLine)
 
-    addSpacer(layout, 24)
+    addSpacer(rightLayout, 40)
 
-    // ── Play button ──────────────────────────────────────────────
-
-    const playBtn = Button.CreateSimpleButton('playBtn', 'P L A Y')
-    playBtn.widthInPixels = 280
-    playBtn.heightInPixels = 60
-    playBtn.fontFamily = FONT
-    playBtn.fontSize = 28
-    playBtn.color = BG_COLOR
+    // Play button
+    const playBtn = new Rectangle('playBtn')
+    playBtn.widthInPixels = 300
+    playBtn.heightInPixels = 65
     playBtn.background = ACCENT
     playBtn.cornerRadius = 6
+    playBtn.thickness = 0
     playBtn.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER
+    rightLayout.addControl(playBtn)
+
+    const playBtnText = makeText('playBtnText', 'P L A Y', 30, BG_COLOR)
+    playBtn.addControl(playBtnText)
+
     playBtn.onPointerClickObservable.add(() => {
-        const song = SONG_CATALOG[selectedSongIndex]
-        for (const cb of playListeners) {
-            cb(song.seed, selectedDifficulty)
-        }
+        const song = SONGS[selectedSongIdx]
+        const diff = DIFFICULTY_TO_GAME[DIFFICULTIES[selectedDiffIdx].key]
+        for (const cb of playListeners) cb(song.seed, diff)
     })
     playBtn.onPointerEnterObservable.add(() => { playBtn.background = ACCENT_PINK })
     playBtn.onPointerOutObservable.add(() => { playBtn.background = ACCENT })
-    layout.addControl(playBtn)
 
-    // ── Public handle ────────────────────────────────────────────
+    // ── State management ─────────────────────────────────────────
+
+    function selectSong(index: number): void {
+        selectedSongIdx = index
+        for (let i = 0; i < songRows.length; i++) {
+            const selected = i === index
+            songRows[i].background = selected ? SELECTED_BG : 'transparent'
+            songRows[i].color = selected ? ACCENT : ACCENT_DIM
+        }
+        songTitle.text = SONGS[index].name
+    }
+
+    function selectDifficulty(index: number): void {
+        selectedDiffIdx = index
+        for (let i = 0; i < diffButtons.length; i++) {
+            const selected = i === index
+            diffButtons[i].background = selected ? DIFF_SELECTED_BG : 'transparent'
+            diffButtons[i].color = selected ? ACCENT : ACCENT_DIM
+        }
+    }
+
+    // ── Handle ───────────────────────────────────────────────────
 
     return {
         onPlay(callback) {
@@ -226,32 +266,67 @@ export function createMenu(scene: Scene): Menu {
 
         dispose() {
             playListeners.clear()
-            texture.dispose()
-            plane.dispose()
+            leftTex.dispose()
+            leftPlane.dispose()
+            rightTex.dispose()
+            rightPlane.dispose()
         },
     }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
 
-function createSongRow(name: string, selected: boolean): Rectangle {
+function makePanel(name: string): Rectangle {
+    const panel = new Rectangle(name)
+    panel.width = 1
+    panel.height = 1
+    panel.background = BG_COLOR
+    panel.color = ACCENT_DIM
+    panel.thickness = 1
+    panel.cornerRadius = 8
+    return panel
+}
+
+function makeText(name: string, text: string, size: number, color: string): TextBlock {
+    const tb = new TextBlock(name, text)
+    tb.fontFamily = FONT
+    tb.fontSize = size
+    tb.color = color
+    return tb
+}
+
+function makeSongRow(name: string, selected: boolean): Rectangle {
     const row = new Rectangle(`song_${name}`)
-    row.heightInPixels = 44
+    row.heightInPixels = 100
     row.background = selected ? SELECTED_BG : 'transparent'
     row.color = selected ? ACCENT : ACCENT_DIM
     row.thickness = 1
     row.cornerRadius = 4
-    row.paddingBottomInPixels = 4
+    row.paddingBottomInPixels = 6
 
-    const label = new TextBlock(`songLabel_${name}`, name)
-    label.fontFamily = FONT
-    label.fontSize = 22
-    label.color = TEXT_COLOR
+    const label = makeText(`songLabel_${name}`, name, 30, TEXT_PRIMARY)
     label.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT
-    label.paddingLeftInPixels = 16
+    label.paddingLeftInPixels = 20
     row.addControl(label)
 
     return row
+}
+
+function makeDiffButton(label: string, selected: boolean): Rectangle {
+    const btn = new Rectangle(`diff_${label}`)
+    btn.widthInPixels = 120
+    btn.heightInPixels = 48
+    btn.background = selected ? DIFF_SELECTED_BG : 'transparent'
+    btn.color = selected ? ACCENT : ACCENT_DIM
+    btn.thickness = 1
+    btn.cornerRadius = 4
+    btn.paddingLeftInPixels = 4
+    btn.paddingRightInPixels = 4
+
+    const text = makeText(`diffText_${label}`, label, 20, TEXT_PRIMARY)
+    btn.addControl(text)
+
+    return btn
 }
 
 function addSpacer(parent: StackPanel, heightPx: number): void {
