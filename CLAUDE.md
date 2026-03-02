@@ -31,7 +31,7 @@ No test runner or linter is configured.
 
 VR Beat Saber clone: Babylon.js (3D/WebXR), domain modules with closures.
 
-Mostly flat `src/` layout. `src/music/` holds the music pipeline modules. Files are added as milestones progress.
+Page directories group modules by ownership: `src/arena-page/`, `src/lobby-page/`, `src/splash-page/`, `src/music/`. Shared files (`types.ts`, `xr-session.ts`, `game-state.ts`) stay in `src/`.
 
 ## Module Pattern
 
@@ -44,13 +44,11 @@ Each module follows the same shape:
 
 Example (stage.ts): `createStage(scene, theme)` → `Stage` handle with `onBeat()`, `beatDecaySystem`, `dispose()`.
 
-See `docs/architecture-drop-ecs.md` for XR wiring pattern and full module map.
-
 ## Page Routing
 
-`main.ts` implements a lobby↔arena page router. Each page factory returns `{ systems, dispose }`. The render loop runs the active page's systems via `activeSystems`. Page transitions call `disposePage()` then create the new page.
+`main.ts` has a sync `createRouter(scene)` that owns all page lifecycle. The render loop calls `router.activeSystems()` every frame. Router starts with splash, awaits XR entry via `.then()`, then navigates to lobby. Page transitions use a `navigate(route)` switch — pages emit events, routing logic lives in one place.
 
-XR session is created once at boot and persists across page transitions. Pages receive `xrSession: XRSession | null` as a dependency.
+XR session is required — `createXRSession` resolves only after user enters VR (non-null guarantee). Arena receives `XRSession` directly.
 
 ## Conventions
 
