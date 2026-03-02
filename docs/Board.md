@@ -6,15 +6,18 @@ Board
 
 # Ready
 
-- Music composer — composeMusic(seed) → MusicComposition (step 7)
-- Beat timeline — extractBeatTimeline(composition) → BeatTimeline (step 8)
-- Music player — createMusicPlayer(composition, onBeat) → MusicPlayer (step 9)
 - Choreography — createChoreography(composition, beatTimeline, difficulty) → Choreography (step 10)
 
 # InProgress
 
+- Wire menu into lobby with command queue
+
 # Done
 
+- Command queue — replace callback navigation with frame-deferred command drain
+- Music player — createMusicPlayer(composition, onBeat) → MusicPlayer (step 9)
+- Beat timeline — extractBeatTimeline(composition) → BeatTimeline (step 8)
+- Music composer — composeMusic(seed) → MusicComposition (step 7)
 - Saber trails — velocity-driven opacity, distance fade, live sample (step 5)
 - Implement controllers + sabers (steps 3-4)
 - Drop ECS, establish module architecture
