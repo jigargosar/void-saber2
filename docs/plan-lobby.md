@@ -32,6 +32,8 @@ Dark atmospheric space:
 
 UI panels are the visual focus. Environment is subtle mood lighting.
 
+Detailed lighting analysis: docs/reference/lobby-env-analysis.md
+
 ## UI Layout (5 regions)
 
 All regions are Babylon.js GUI textures on 3D planes, positioned in front of
