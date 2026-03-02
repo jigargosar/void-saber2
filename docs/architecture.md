@@ -43,7 +43,7 @@ Hardcoded song list, no music preview. User picks song and difficulty, triggers 
 
 Controllers render as glowing handles emitting a ray for menu interaction (laser pointer). Ray intersects GUI planes for selection. Handles + rays are lobby's own visuals — disposed on page exit, not shared with arena (arena uses sabers instead).
 
-Internal details: no plan doc yet.
+See `plan-lobby.md` for implementation details.
 
 ## Arena Page
 
@@ -56,7 +56,7 @@ Internal sub-states: playing, paused, results.
 
 Internal state model TBD.
 
-Internal details: no plan doc yet.
+See `plan-arena.md` for implementation details.
 
 ## XR Session
 
