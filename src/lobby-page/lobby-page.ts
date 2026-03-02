@@ -1,7 +1,7 @@
 import { type Scene } from '@babylonjs/core/scene'
 import { type System, type Teardown } from '../types'
 import { createLobbyEnv } from './lobby-env'
-import { createMenu } from './menu'
+// import { createMenu } from './menu'  // hidden while building env
 
 export interface LobbyPage {
     readonly systems: readonly System[]
@@ -11,7 +11,7 @@ export interface LobbyPage {
 
 export function createLobbyPage(scene: Scene): LobbyPage {
     const env = createLobbyEnv(scene)
-    const menu = createMenu(scene)
+    // const menu = createMenu(scene)  // hidden while building env
     const playListeners = new Set<() => void>()
 
     const onKey = (e: KeyboardEvent) => {
@@ -31,7 +31,7 @@ export function createLobbyPage(scene: Scene): LobbyPage {
         dispose() {
             document.removeEventListener('keydown', onKey)
             playListeners.clear()
-            menu.dispose()
+            // menu.dispose()  // hidden while building env
             env.dispose()
         },
     }

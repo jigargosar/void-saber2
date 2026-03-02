@@ -3,48 +3,28 @@ import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight'
-import { SpotLight } from '@babylonjs/core/Lights/spotLight'
+import { PointLight } from '@babylonjs/core/Lights/pointLight'
 import { GlowLayer } from '@babylonjs/core/Layers/glowLayer'
+import { ParticleSystem } from '@babylonjs/core/Particles/particleSystem'
+import { RawTexture } from '@babylonjs/core/Materials/Textures/rawTexture'
+import { Constants } from '@babylonjs/core/Engines/constants'
 import { Vector3, Color3, Color4 } from '@babylonjs/core/Maths/math'
 import { type Light } from '@babylonjs/core/Lights/light'
 import { type Teardown } from '../types'
 
-// ── Scene atmosphere ─────────────────────────────────────────────
+// ── Constants ────────────────────────────────────────────────────
 
-const BG = new Color3(0.02, 0.01, 0.05)          // dark purple
-const FOG_DENSITY = 0.035
+const BG = new Color3(0.01, 0.01, 0.03)
+const FOG_DENSITY = 0.04
 
-// ── Wireframe border ─────────────────────────────────────────────
+const PILLAR_COUNT = 8
+const PILLAR_GAP = 5
+const PILLAR_X = 5
+const PILLAR_HEIGHT = 6
+const PILLAR_COLOR = new Color3(0.15, 0.05, 0.35)    // purple like arena
+const PILLAR_ACCENT = new Color3(0.05, 0.3, 0.5)     // teal accent
 
-const BORDER_W = 5                                // meters, x-axis
-const BORDER_D = 4                                // meters, z-axis
-const BORDER_THICKNESS = 0.02
-const BORDER_HEIGHT = 0.01
-const BORDER_GLOW = new Color3(0.1, 0.4, 0.5)    // teal
-
-// ── Distant box clusters (depth cues) ────────────────────────────
-// Asymmetric groups at varying distances. Fogged out.
-// Imply ground plane existence without a visible floor surface.
-
-const BOX_CLUSTERS = [
-    // Front-right
-    { x: 12, z: -8, w: 2, h: 3, d: 2 },
-    { x: 14, z: -7, w: 1.5, h: 2, d: 1.5 },
-    { x: 13, z: -9.5, w: 1, h: 1.5, d: 1 },
-    // Right side
-    { x: 18, z: 2, w: 2.5, h: 4, d: 2 },
-    { x: 16, z: 3, w: 1.5, h: 2.5, d: 1.5 },
-    // Behind-left
-    { x: -10, z: 12, w: 3, h: 3.5, d: 2.5 },
-    { x: -8, z: 14, w: 1.5, h: 2, d: 1.5 },
-    { x: -12, z: 13, w: 2, h: 4, d: 2 },
-    // Behind-right
-    { x: 8, z: 15, w: 2, h: 3, d: 2.5 },
-    { x: 10, z: 16, w: 1.5, h: 2, d: 1 },
-    // Far left
-    { x: -16, z: -3, w: 2, h: 3.5, d: 2 },
-    { x: -18, z: -1, w: 1, h: 2, d: 1.5 },
-] as const
+const GROUND_SIZE = 50
 
 // ── Public interface ─────────────────────────────────────────────
 
@@ -64,33 +44,19 @@ export function createLobbyEnv(scene: Scene): LobbyEnv {
     scene.fogDensity = FOG_DENSITY
     scene.fogColor = BG
 
-    // ── Lighting ────────────────────────────────────────────────
+    // ── Lighting — same pattern as arena ────────────────────────
 
-    // Dim purple ambient — just enough to faintly see box silhouettes
     const hemi = new HemisphericLight('lobbyHemi', new Vector3(0, 1, 0), scene)
-    hemi.intensity = 0.02
-    hemi.diffuse = new Color3(0.2, 0.1, 0.4)
+    hemi.intensity = 0.08
     lights.push(hemi)
 
-    // Blue/teal spotlight from above menu area, pointing down
-    const spot = new SpotLight(
-        'lobbySpot',
-        new Vector3(0, 12, -1),                       // above/behind menu panels
-        new Vector3(0, -1, -0.2).normalize(),         // down, slightly forward
-        Math.PI / 3,                                  // 60° cone
-        2,                                            // falloff exponent
-        scene,
-    )
-    spot.diffuse = new Color3(0.2, 0.6, 0.8)         // blue/teal
-    spot.intensity = 3
-    lights.push(spot)
+    // ── Glow layer — same settings as arena ─────────────────────
 
-    // Glow layer for wireframe border and UI emissives
     const glow = new GlowLayer('lobbyGlow', scene, {
         mainTextureSamples: 4,
         blurKernelSize: 64,
     })
-    glow.intensity = 1.2
+    glow.intensity = 1.08
     glow.customEmissiveColorSelector = (mesh, _subMesh, _material, result) => {
         if (mesh.material instanceof StandardMaterial) {
             const ec = mesh.material.emissiveColor
@@ -100,53 +66,104 @@ export function createLobbyEnv(scene: Scene): LobbyEnv {
         }
     }
 
-    // ── Wireframe border (4 emissive edges, no floor surface) ───
+    // ── Ground ──────────────────────────────────────────────────
 
-    const borderMat = new StandardMaterial('lobbyBorderMat', scene)
-    borderMat.emissiveColor = BORDER_GLOW
-    borderMat.disableLighting = true
-    materials.push(borderMat)
+    const groundMat = new StandardMaterial('lobbyGroundMat', scene)
+    groundMat.diffuseColor = new Color3(0.02, 0.02, 0.03)
+    groundMat.specularColor = Color3.Black()
+    materials.push(groundMat)
 
-    const halfW = BORDER_W / 2
-    const halfD = BORDER_D / 2
-    const borderEdges = [
-        { w: BORDER_W, d: BORDER_THICKNESS, x: 0, z: -halfD },  // front
-        { w: BORDER_W, d: BORDER_THICKNESS, x: 0, z: halfD },   // back
-        { w: BORDER_THICKNESS, d: BORDER_D, x: -halfW, z: 0 },  // left
-        { w: BORDER_THICKNESS, d: BORDER_D, x: halfW, z: 0 },   // right
-    ]
+    const ground = MeshBuilder.CreateGround('lobbyGround', {
+        width: GROUND_SIZE, height: GROUND_SIZE,
+    }, scene)
+    ground.material = groundMat
+    ground.parent = root
 
-    for (let i = 0; i < borderEdges.length; i++) {
-        const e = borderEdges[i]
-        const edge = MeshBuilder.CreateBox(`lobbyEdge${i}`, {
-            width: e.w, height: BORDER_HEIGHT, depth: e.d,
+    // ── Emissive pillars — self-illuminated, 4 pairs ────────────
+
+    const pillarStart = Math.floor(PILLAR_COUNT / 2) * PILLAR_GAP / 2
+
+    for (let i = 0; i < PILLAR_COUNT; i++) {
+        const side = i % 2 === 0 ? -1 : 1
+        const row = Math.floor(i / 2)
+        const z = pillarStart - row * PILLAR_GAP - 3
+        const color = i % 2 === 0 ? PILLAR_COLOR : PILLAR_ACCENT
+
+        const mat = new StandardMaterial(`lobbyPillarMat${i}`, scene)
+        mat.emissiveColor = color
+        mat.disableLighting = true
+        materials.push(mat)
+
+        const pillar = MeshBuilder.CreateCylinder(`lobbyPillar${i}`, {
+            height: PILLAR_HEIGHT, diameter: 0.15, tessellation: 12,
         }, scene)
-        edge.position.set(e.x, BORDER_HEIGHT / 2, e.z)
-        edge.material = borderMat
-        edge.parent = root
+        pillar.position.set(side * PILLAR_X, PILLAR_HEIGHT / 2, z)
+        pillar.material = mat
+        pillar.parent = root
+
+        // Point light near ground at first 2 rows — illuminates the floor
+        if (row < 2) {
+            const ptLight = new PointLight(
+                `lobbyPillarLight${i}`,
+                new Vector3(side * PILLAR_X, 0.5, z),
+                scene,
+            )
+            ptLight.diffuse = color
+            ptLight.intensity = 0.6
+            ptLight.range = 5
+            lights.push(ptLight)
+        }
     }
 
-    // ── Box clusters (depth cues) ───────────────────────────────
+    // ── Particles — scattered dust ──────────────────────────────
 
-    const boxMat = new StandardMaterial('lobbyBoxMat', scene)
-    boxMat.diffuseColor = new Color3(0.03, 0.03, 0.05)
-    boxMat.specularColor = Color3.Black()
-    materials.push(boxMat)
+    const particles = new ParticleSystem('lobbyParticles', 400, scene)
+    particles.createBoxEmitter(
+        new Vector3(0, 0.005, 0),
+        new Vector3(0, 0.01, 0),
+        new Vector3(-14, 0, -14),
+        new Vector3(14, 6, 8),
+    )
+    particles.emitter = Vector3.Zero()
 
-    for (let i = 0; i < BOX_CLUSTERS.length; i++) {
-        const b = BOX_CLUSTERS[i]
-        const box = MeshBuilder.CreateBox(`lobbyBox${i}`, {
-            width: b.w, height: b.h, depth: b.d,
-        }, scene)
-        box.position.set(b.x, b.h / 2, b.z)
-        box.material = boxMat
-        box.parent = root
+    const texSize = 32
+    const texData = new Uint8Array(texSize * texSize * 4)
+    const mid = (texSize - 1) / 2
+    for (let y = 0; y < texSize; y++) {
+        for (let x = 0; x < texSize; x++) {
+            const dx = (x - mid) / mid
+            const dy = (y - mid) / mid
+            const a = Math.max(0, Math.exp(-(dx * dx + dy * dy) * 3))
+            const idx = (y * texSize + x) * 4
+            texData[idx] = 255
+            texData[idx + 1] = 255
+            texData[idx + 2] = 255
+            texData[idx + 3] = Math.round(a * 255)
+        }
     }
+    particles.particleTexture = new RawTexture(
+        texData, texSize, texSize,
+        Constants.TEXTUREFORMAT_RGBA, scene, false, false,
+    )
+
+    particles.minSize = 0.02
+    particles.maxSize = 0.06
+    particles.minLifeTime = 8
+    particles.maxLifeTime = 16
+    particles.emitRate = 40
+    particles.color1 = new Color4(0.3, 0.5, 0.8, 0.4)
+    particles.color2 = new Color4(0.15, 0.3, 0.6, 0.25)
+    particles.colorDead = new Color4(0, 0.05, 0.1, 0.0)
+    particles.minEmitPower = 0.001
+    particles.maxEmitPower = 0.003
+    particles.gravity = new Vector3(0, 0.001, 0)
+    particles.start()
 
     // ── Handle ──────────────────────────────────────────────────
 
     return {
         dispose() {
+            particles.dispose()
             glow.dispose()
             for (const light of lights) light.dispose()
             for (const mat of materials) mat.dispose()
