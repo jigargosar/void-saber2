@@ -11,7 +11,8 @@ Lobby receives from router (see architecture.md):
 - scene
 - xrSession — controllers for pointer handles
 
-Lobby emits: onPlay(seed, difficulty) → router navigates to arena.
+Lobby emits: onPlay → router navigates to arena.
+Currently triggered by squeeze grip. Will carry seed + difficulty when GUI interaction is implemented.
 
 ## Scope
 
@@ -32,6 +33,8 @@ No complex geometry. Mood comes from lighting and glow.
 ## Song Selection UI
 
 Two-panel Beat Saber replica layout. Babylon.js GUI on 3D planes.
+Current mock: single panel with hardcoded songs, 3 difficulties, mouse-only Play button.
+Target: two panels with laser pointer interaction (requires VR pointer handles).
 
 Left panel — song list:
 - Hardcoded song names
@@ -80,4 +83,5 @@ lobby-page/
 
 ## Wiring
 
-- [x] Router: forward seed + difficulty — arch doc confirms route carries these
+- [x] Squeeze grip triggers navigation to arena (temporary — will be replaced by Play button with laser pointer)
+- [ ] onPlay carries seed + difficulty once GUI interaction works
