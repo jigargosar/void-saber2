@@ -57,6 +57,8 @@ Internal details: no plan doc yet.
 ## Directory Structure
 
 Page directories group modules by ownership. Shared files stay in `src/`.
+No cross-page imports — lobby-page/, arena-page/, and music/ can develop in parallel.
+Only coupling point is the router's navigate(route) switch in main.ts.
 
 ```
 src/
