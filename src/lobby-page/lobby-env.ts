@@ -3,28 +3,42 @@ import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight'
-import { PointLight } from '@babylonjs/core/Lights/pointLight'
+import { SpotLight } from '@babylonjs/core/Lights/spotLight'
 import { GlowLayer } from '@babylonjs/core/Layers/glowLayer'
 import { ParticleSystem } from '@babylonjs/core/Particles/particleSystem'
 import { RawTexture } from '@babylonjs/core/Materials/Textures/rawTexture'
 import { Constants } from '@babylonjs/core/Engines/constants'
 import { Vector3, Color3, Color4 } from '@babylonjs/core/Maths/math'
-import { type Light } from '@babylonjs/core/Lights/light'
 import { type Teardown } from '../types'
 
 // ── Constants ────────────────────────────────────────────────────
 
-const BG = new Color3(0.01, 0.01, 0.03)
-const FOG_DENSITY = 0.04
+const BG = new Color3(0.01, 0.04, 0.08)              // dark blue-teal
+const FOG_COLOR = new Color3(0.02, 0.06, 0.1)       // blue-teal fog — creates atmospheric wash
+const FOG_DENSITY = 0.018
 
-const PILLAR_COUNT = 8
-const PILLAR_GAP = 5
-const PILLAR_X = 5
-const PILLAR_HEIGHT = 6
-const PILLAR_COLOR = new Color3(0.15, 0.05, 0.35)    // purple like arena
-const PILLAR_ACCENT = new Color3(0.05, 0.3, 0.5)     // teal accent
+const SPOT_COLOR = new Color3(0.2, 0.7, 0.9)        // bright teal
+const SPOT_POSITION = new Vector3(0, 20, -6)         // high above, behind panels
+const SPOT_DIRECTION = new Vector3(0, -1, -0.1)      // mostly down
+const SPOT_ANGLE = Math.PI / 2                       // very wide cone
+const SPOT_EXPONENT = 0.8                            // slow falloff
+const SPOT_INTENSITY = 10
 
-const GROUND_SIZE = 50
+const GROUND_SIZE = 60
+const GROUND_BORDER_SIZE = 14                        // wireframe border rectangle
+const GROUND_BORDER_COLOR = new Color3(0.03, 0.15, 0.25)
+
+// Box cluster depth cues
+const BOX_CLUSTERS = [
+    { x: -12, z: -8, count: 3, scale: 1.2 },
+    { x: 14, z: -12, count: 4, scale: 0.8 },
+    { x: -9, z: -18, count: 2, scale: 1.5 },
+    { x: 8, z: -22, count: 5, scale: 0.6 },
+    { x: -16, z: -15, count: 3, scale: 1.0 },
+    { x: 18, z: -6, count: 2, scale: 1.3 },
+    { x: -6, z: -25, count: 4, scale: 0.7 },
+    { x: 11, z: -28, count: 3, scale: 0.9 },
+]
 
 // ── Public interface ─────────────────────────────────────────────
 
@@ -35,28 +49,42 @@ export interface LobbyEnv {
 export function createLobbyEnv(scene: Scene): LobbyEnv {
     const root = new TransformNode('lobbyEnvRoot', scene)
     const materials: StandardMaterial[] = []
-    const lights: Light[] = []
 
     // ── Atmosphere ───────────────────────────────────────────────
 
     scene.clearColor = new Color4(BG.r, BG.g, BG.b, 1)
     scene.fogMode = Scene.FOGMODE_EXP2
     scene.fogDensity = FOG_DENSITY
-    scene.fogColor = BG
+    scene.fogColor = FOG_COLOR
 
-    // ── Lighting — same pattern as arena ────────────────────────
+    // ── Spotlight — atmospheric gradient through fog ─────────────
 
-    const hemi = new HemisphericLight('lobbyHemi', new Vector3(0, 1, 0), scene)
-    hemi.intensity = 0.08
-    lights.push(hemi)
+    const spot = new SpotLight(
+        'lobbySpot',
+        SPOT_POSITION,
+        SPOT_DIRECTION,
+        SPOT_ANGLE,
+        SPOT_EXPONENT,
+        scene,
+    )
+    spot.diffuse = SPOT_COLOR
+    spot.intensity = SPOT_INTENSITY
+    spot.range = 60
 
-    // ── Glow layer — same settings as arena ─────────────────────
+    // ── Hemisphere light — ambient blue fill from below ──────────
+
+    const hemi = new HemisphericLight('lobbyHemi', new Vector3(0, -1, 0), scene)
+    hemi.diffuse = new Color3(0.02, 0.02, 0.04)     // very dim top
+    hemi.groundColor = new Color3(0.04, 0.12, 0.18)  // teal from below
+    hemi.intensity = 1.5
+
+    // ── Glow layer ───────────────────────────────────────────────
 
     const glow = new GlowLayer('lobbyGlow', scene, {
         mainTextureSamples: 4,
         blurKernelSize: 64,
     })
-    glow.intensity = 1.08
+    glow.intensity = 1.2
     glow.customEmissiveColorSelector = (mesh, _subMesh, _material, result) => {
         if (mesh.material instanceof StandardMaterial) {
             const ec = mesh.material.emissiveColor
@@ -66,11 +94,12 @@ export function createLobbyEnv(scene: Scene): LobbyEnv {
         }
     }
 
-    // ── Ground ──────────────────────────────────────────────────
+    // ── Ground ───────────────────────────────────────────────────
 
     const groundMat = new StandardMaterial('lobbyGroundMat', scene)
-    groundMat.diffuseColor = new Color3(0.02, 0.02, 0.03)
-    groundMat.specularColor = Color3.Black()
+    groundMat.diffuseColor = new Color3(0.03, 0.03, 0.05)
+    groundMat.specularColor = new Color3(0.05, 0.1, 0.15)
+    groundMat.specularPower = 32
     materials.push(groundMat)
 
     const ground = MeshBuilder.CreateGround('lobbyGround', {
@@ -79,50 +108,60 @@ export function createLobbyEnv(scene: Scene): LobbyEnv {
     ground.material = groundMat
     ground.parent = root
 
-    // ── Emissive pillars — self-illuminated, 4 pairs ────────────
+    // ── Ground wireframe border ──────────────────────────────────
 
-    const pillarStart = Math.floor(PILLAR_COUNT / 2) * PILLAR_GAP / 2
+    const borderMat = new StandardMaterial('lobbyBorderMat', scene)
+    borderMat.emissiveColor = GROUND_BORDER_COLOR
+    borderMat.disableLighting = true
+    materials.push(borderMat)
 
-    for (let i = 0; i < PILLAR_COUNT; i++) {
-        const side = i % 2 === 0 ? -1 : 1
-        const row = Math.floor(i / 2)
-        const z = pillarStart - row * PILLAR_GAP - 3
-        const color = i % 2 === 0 ? PILLAR_COLOR : PILLAR_ACCENT
+    const half = GROUND_BORDER_SIZE / 2
+    const borderY = 0.01
+    const borderPoints = [
+        new Vector3(-half, borderY, -half),
+        new Vector3(half, borderY, -half),
+        new Vector3(half, borderY, half),
+        new Vector3(-half, borderY, half),
+        new Vector3(-half, borderY, -half),
+    ]
+    const border = MeshBuilder.CreateLines('lobbyBorder', {
+        points: borderPoints,
+    }, scene)
+    border.color = new Color3(GROUND_BORDER_COLOR.r, GROUND_BORDER_COLOR.g, GROUND_BORDER_COLOR.b)
+    border.parent = root
 
-        const mat = new StandardMaterial(`lobbyPillarMat${i}`, scene)
-        mat.emissiveColor = color
-        mat.disableLighting = true
-        materials.push(mat)
+    // ── Box clusters — depth cues ────────────────────────────────
 
-        const pillar = MeshBuilder.CreateCylinder(`lobbyPillar${i}`, {
-            height: PILLAR_HEIGHT, diameter: 0.15, tessellation: 12,
-        }, scene)
-        pillar.position.set(side * PILLAR_X, PILLAR_HEIGHT / 2, z)
-        pillar.material = mat
-        pillar.parent = root
+    const boxMat = new StandardMaterial('lobbyBoxMat', scene)
+    boxMat.diffuseColor = new Color3(0.03, 0.03, 0.05)
+    boxMat.specularColor = Color3.Black()
+    materials.push(boxMat)
 
-        // Point light near ground at first 2 rows — illuminates the floor
-        if (row < 2) {
-            const ptLight = new PointLight(
-                `lobbyPillarLight${i}`,
-                new Vector3(side * PILLAR_X, 0.5, z),
-                scene,
+    for (const cluster of BOX_CLUSTERS) {
+        for (let i = 0; i < cluster.count; i++) {
+            const s = cluster.scale * (0.6 + Math.random() * 0.8)
+            const h = s * (0.8 + Math.random() * 1.5)
+            const box = MeshBuilder.CreateBox(`lobbyBox_${cluster.x}_${i}`, {
+                width: s, height: h, depth: s,
+            }, scene)
+            box.position.set(
+                cluster.x + (i - cluster.count / 2) * s * 1.3,
+                h / 2,
+                cluster.z + (Math.random() - 0.5) * 2,
             )
-            ptLight.diffuse = color
-            ptLight.intensity = 0.6
-            ptLight.range = 5
-            lights.push(ptLight)
+            box.material = boxMat
+            box.parent = root
         }
     }
 
-    // ── Particles — scattered dust ──────────────────────────────
+    // ── Particles — drifting blue dust ────────────────────────────
 
     const particles = new ParticleSystem('lobbyParticles', 400, scene)
     particles.createBoxEmitter(
         new Vector3(0, 0.005, 0),
         new Vector3(0, 0.01, 0),
-        new Vector3(-14, 0, -14),
-        new Vector3(14, 6, 8),
+        new Vector3(-16, 0, -20),
+        new Vector3(16, 8, 4),
     )
     particles.emitter = Vector3.Zero()
 
@@ -159,13 +198,15 @@ export function createLobbyEnv(scene: Scene): LobbyEnv {
     particles.gravity = new Vector3(0, 0.001, 0)
     particles.start()
 
-    // ── Handle ──────────────────────────────────────────────────
+    // ── Handle ───────────────────────────────────────────────────
 
     return {
         dispose() {
             particles.dispose()
+            border.dispose()
             glow.dispose()
-            for (const light of lights) light.dispose()
+            hemi.dispose()
+            spot.dispose()
             for (const mat of materials) mat.dispose()
             root.dispose(false, true)
             scene.fogMode = Scene.FOGMODE_NONE
