@@ -10,6 +10,8 @@ Board
 
 # InProgress
 
+- Lobby menu visual improvements (10 issues in plan-lobby.md)
+
 # Done
 
 - Wire menu into lobby with command queue
