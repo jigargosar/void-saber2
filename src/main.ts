@@ -48,25 +48,27 @@ interface Router {
     drain(): void
 }
 
+interface Page {
+    readonly systems: readonly System[]
+    dispose: Teardown
+}
+
+const emptyPage: Page = { systems: [], dispose() {} }
+
 function createRouter(scene: Scene): Router {
     const queue = createCommandQueue()
-    let currentSystems: readonly System[] = []
-    let teardown: Teardown = () => {}
+    let activePage: Page = emptyPage
 
     function navigate(route: Route): void {
-        teardown()
+        activePage.dispose()
 
         switch (route.page) {
             case 'lobby': {
-                const lobby = createLobbyPage(scene, queue)
-                currentSystems = lobby.systems
-                teardown = () => { lobby.dispose() }
+                activePage = createLobbyPage(scene, queue)
                 break
             }
             case 'arena': {
-                const arena = createArenaPage(scene, theme, xrSession, route.seed, route.difficulty, queue)
-                currentSystems = arena.systems
-                teardown = () => { arena.dispose() }
+                activePage = createArenaPage(scene, theme, xrSession, route.seed, route.difficulty, queue)
                 break
             }
         }
@@ -74,7 +76,7 @@ function createRouter(scene: Scene): Router {
 
     // Splash while waiting for XR entry
     const splash = createSplash(scene)
-    currentSystems = splash.systems
+    activePage = splash
 
     let xrSession: XRSession
     createXRSession(scene).then((session) => {
@@ -96,7 +98,7 @@ function createRouter(scene: Scene): Router {
     }
 
     return {
-        activeSystems() { return currentSystems },
+        activeSystems() { return activePage.systems },
         drain() { queue.drain(handleCommand) },
     }
 }
