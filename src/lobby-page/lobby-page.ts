@@ -14,6 +14,13 @@ export function createLobbyPage(scene: Scene): LobbyPage {
     const menu = createMenu(scene)
     const playListeners = new Set<() => void>()
 
+    const onKey = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+            for (const cb of playListeners) cb()
+        }
+    }
+    document.addEventListener('keydown', onKey)
+
     return {
         systems: [],
 
@@ -22,6 +29,7 @@ export function createLobbyPage(scene: Scene): LobbyPage {
         },
 
         dispose() {
+            document.removeEventListener('keydown', onKey)
             playListeners.clear()
             menu.dispose()
             env.dispose()
