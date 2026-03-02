@@ -13,7 +13,7 @@ export interface ArenaPage {
 export function createArenaPage(
     scene: Scene,
     theme: Theme,
-    xrSession: XRSession | null,
+    xrSession: XRSession,
 ): ArenaPage {
     const stage = createStage(scene, theme)
     const sabers = createSabers(scene, theme)
@@ -21,17 +21,15 @@ export function createArenaPage(
     const teardowns: Teardown[] = []
 
     // Attach sabers to already-connected controllers
-    if (xrSession) {
-        for (const [hand, grip] of xrSession.controllers) {
-            sabers.attach(hand, grip)
-        }
-        teardowns.push(xrSession.onControllerAdded((hand, grip) => {
-            sabers.attach(hand, grip)
-        }))
-        teardowns.push(xrSession.onControllerRemoved((hand) => {
-            sabers.detach(hand)
-        }))
+    for (const [hand, grip] of xrSession.controllers) {
+        sabers.attach(hand, grip)
     }
+    teardowns.push(xrSession.onControllerAdded((hand, grip) => {
+        sabers.attach(hand, grip)
+    }))
+    teardowns.push(xrSession.onControllerRemoved((hand) => {
+        sabers.detach(hand)
+    }))
 
     // Escape key to return to lobby (temporary, pause menu will replace this)
     const onKey = (e: KeyboardEvent) => {
@@ -57,10 +55,8 @@ export function createArenaPage(
             returnListeners.clear()
             for (const td of teardowns) td()
             // Detach sabers from grips before disposing
-            if (xrSession) {
-                for (const [hand] of xrSession.controllers) {
-                    sabers.detach(hand)
-                }
+            for (const [hand] of xrSession.controllers) {
+                sabers.detach(hand)
             }
             sabers.dispose()
             stage.dispose()

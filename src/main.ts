@@ -8,7 +8,7 @@ import '@babylonjs/loaders/glTF'
 import '@babylonjs/core/Materials/Node/Blocks'
 
 import { type Theme, type System, type Teardown } from './types'
-import { createSplashPage } from './splash-page'
+import { createSplash } from './splash'
 import { createLobbyPage } from './lobby-page'
 import { createArenaPage } from './arena-page'
 import { createXRSession, type XRSession } from './xr-session'
@@ -20,70 +20,6 @@ const theme: Theme = {
     rightHand: new Color3(0.95, 0, 0.7),
 }
 
-// ── Router ────────────────────────────────────────────────────
-
-interface Router {
-    currentSystems(): readonly System[]
-    dispose: Teardown
-}
-
-function createRouter(scene: Scene, theme: Theme): Router {
-    let activeSystems: readonly System[] = []
-    let disposePage: Teardown = () => {}
-    let xrSession: XRSession | null = null
-
-    function showSplash(): void {
-        disposePage()
-        const splash = createSplashPage(scene)
-        activeSystems = splash.systems
-        disposePage = () => { splash.dispose() }
-    }
-
-    function showLobby(): void {
-        disposePage()
-        const lobby = createLobbyPage(scene)
-        activeSystems = lobby.systems
-        lobby.onPlay((_seed, _difficulty) => {
-            showArena()
-        })
-        disposePage = () => { lobby.dispose() }
-    }
-
-    function showArena(): void {
-        disposePage()
-        const arena = createArenaPage(scene, theme, xrSession)
-        activeSystems = arena.systems
-        arena.onReturnToLobby(() => { showLobby() })
-        disposePage = () => { arena.dispose() }
-    }
-
-    // Boot: splash while waiting for user to enter VR
-    showSplash()
-
-    createXRSession(scene).then((session) => {
-        if (!session) return
-        xrSession = session
-        session.onEnterXR(() => { showLobby() })
-    }).catch(console.error)
-
-    return {
-        currentSystems() { return activeSystems },
-
-        dispose() {
-            disposePage()
-            xrSession?.dispose()
-        },
-    }
-}
-
-// ── Engine bootstrap ──────────────────────────────────────────
-
-function setupCamera(scene: Scene) {
-    const camera = new FreeCamera('cam', new Vector3(0, EYE_HEIGHT, 0), scene)
-    camera.setTarget(new Vector3(0, EYE_HEIGHT, -100))
-    camera.attachControl()
-}
-
 function setupEngine(): { engine: Engine; scene: Scene } {
     const canvas = document.getElementById('canvas')
     if (!(canvas instanceof HTMLCanvasElement)) {
@@ -92,23 +28,84 @@ function setupEngine(): { engine: Engine; scene: Scene } {
 
     const engine = new Engine(canvas, true)
     const scene = new Scene(engine)
-    setupCamera(scene)
+
+    const camera = new FreeCamera('cam', new Vector3(0, EYE_HEIGHT, 0), scene)
+    camera.setTarget(new Vector3(0, EYE_HEIGHT, -100))
+    camera.attachControl()
+
     return { engine, scene }
 }
 
-function main(): void {
-    const { engine, scene } = setupEngine()
-    const router = createRouter(scene, theme)
+// ── Router (manages page switching, lives in main) ──────────
 
+interface Router {
+    readonly systems: readonly System[]
+    dispose: Teardown
+}
+
+function createRouter(
+    scene: Scene,
+    xrSession: XRSession,
+): Router {
+    const state = { systems: [] as readonly System[], teardown: (() => {}) as Teardown }
+
+    function showLobby(): void {
+        state.teardown()
+        const lobby = createLobbyPage(scene)
+        state.systems = lobby.systems
+        lobby.onPlay((_seed, _difficulty) => {
+            showArena()
+        })
+        state.teardown = () => { lobby.dispose() }
+    }
+
+    function showArena(): void {
+        state.teardown()
+        const arena = createArenaPage(scene, theme, xrSession)
+        state.systems = arena.systems
+        arena.onReturnToLobby(() => { showLobby() })
+        state.teardown = () => { arena.dispose() }
+    }
+
+    showLobby()
+
+    return {
+        get systems() { return state.systems },
+
+        dispose() {
+            state.teardown()
+            state.systems = []
+            state.teardown = () => {}
+        },
+    }
+}
+
+// ── Boot sequence ───────────────────────────────────────────
+
+async function main(): Promise<void> {
+    const { engine, scene } = setupEngine()
+
+    // Splash renders while "Enter VR" button waits for user
+    const splash = createSplash(scene)
+    let systems: readonly System[] = splash.systems
+
+    // Render loop — always running, reads current systems
     scene.onBeforeRenderObservable.add(() => {
         const dt = engine.getDeltaTime() / 1000
-        for (const system of router.currentSystems()) {
+        for (const system of systems) {
             system(dt)
         }
     })
-
     engine.runRenderLoop(() => scene.render())
     window.addEventListener('resize', () => engine.resize())
+
+    // Await user entering VR — splash visible the whole time
+    const xrSession = await createXRSession(scene)
+    splash.dispose()
+
+    // Router takes over — lobby first
+    const router = createRouter(scene, xrSession)
+    systems = router.systems
 }
 
-main()
+main().catch(console.error)
