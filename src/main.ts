@@ -40,6 +40,10 @@ function setupEngine(): { engine: Engine; scene: Scene } {
 
 type SystemsSetter = (systems: readonly System[]) => void
 
+type Route =
+    | { readonly page: 'lobby' }
+    | { readonly page: 'arena' }
+
 interface Router {
     dispose: Teardown
 }
@@ -51,25 +55,28 @@ function createRouter(
 ): Router {
     let teardown: Teardown = () => {}
 
-    function showLobby(): void {
+    function navigate(route: Route): void {
         teardown()
-        const lobby = createLobbyPage(scene)
-        setSystems(lobby.systems)
-        lobby.onPlay((_seed, _difficulty) => {
-            showArena()
-        })
-        teardown = () => { lobby.dispose() }
+
+        switch (route.page) {
+            case 'lobby': {
+                const lobby = createLobbyPage(scene)
+                setSystems(lobby.systems)
+                lobby.onPlay(() => { navigate({ page: 'arena' }) })
+                teardown = () => { lobby.dispose() }
+                break
+            }
+            case 'arena': {
+                const arena = createArenaPage(scene, theme, xrSession)
+                setSystems(arena.systems)
+                arena.onReturnToLobby(() => { navigate({ page: 'lobby' }) })
+                teardown = () => { arena.dispose() }
+                break
+            }
+        }
     }
 
-    function showArena(): void {
-        teardown()
-        const arena = createArenaPage(scene, theme, xrSession)
-        setSystems(arena.systems)
-        arena.onReturnToLobby(() => { showLobby() })
-        teardown = () => { arena.dispose() }
-    }
-
-    showLobby()
+    navigate({ page: 'lobby' })
 
     return {
         dispose() {
