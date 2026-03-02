@@ -28,7 +28,7 @@ export function createMusicPlayer(
 
     // ── Master gain ──────────────────────────────────────────
 
-    const master = new Gain(0.4).connect(getDestination())
+    const master = new Gain(0.25).connect(getDestination())
 
     // ── Pad ──────────────────────────────────────────────────
 
