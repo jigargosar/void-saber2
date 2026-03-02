@@ -8,6 +8,7 @@ import '@babylonjs/loaders/glTF'
 import '@babylonjs/core/Materials/Node/Blocks'
 
 import { type Theme, type System, type Teardown } from './types'
+import { createSplashPage } from './splash-page'
 import { createLobbyPage } from './lobby-page'
 import { createArenaPage } from './arena-page'
 import { createXRSession, type XRSession } from './xr-session'
@@ -18,6 +19,64 @@ const theme: Theme = {
     leftHand: new Color3(0, 0.9, 0.95),
     rightHand: new Color3(0.95, 0, 0.7),
 }
+
+// ── Router ────────────────────────────────────────────────────
+
+interface Router {
+    currentSystems(): readonly System[]
+    dispose: Teardown
+}
+
+function createRouter(scene: Scene, theme: Theme): Router {
+    let activeSystems: readonly System[] = []
+    let disposePage: Teardown = () => {}
+    let xrSession: XRSession | null = null
+
+    function showSplash(): void {
+        disposePage()
+        const splash = createSplashPage(scene)
+        activeSystems = splash.systems
+        disposePage = () => { splash.dispose() }
+    }
+
+    function showLobby(): void {
+        disposePage()
+        const lobby = createLobbyPage(scene)
+        activeSystems = lobby.systems
+        lobby.onPlay((_seed, _difficulty) => {
+            showArena()
+        })
+        disposePage = () => { lobby.dispose() }
+    }
+
+    function showArena(): void {
+        disposePage()
+        const arena = createArenaPage(scene, theme, xrSession)
+        activeSystems = arena.systems
+        arena.onReturnToLobby(() => { showLobby() })
+        disposePage = () => { arena.dispose() }
+    }
+
+    // Boot: splash while waiting for user to enter VR
+    showSplash()
+
+    createXRSession(scene).then((session) => {
+        if (!session) return
+        xrSession = session
+        session.onEnterXR(() => { showLobby() })
+    }).catch(console.error)
+
+    return {
+        currentSystems() { return activeSystems },
+
+        dispose() {
+            disposePage()
+            xrSession?.dispose()
+        },
+    }
+}
+
+// ── Engine bootstrap ──────────────────────────────────────────
 
 function setupCamera(scene: Scene) {
     const camera = new FreeCamera('cam', new Vector3(0, EYE_HEIGHT, 0), scene)
@@ -39,43 +98,11 @@ function setupEngine(): { engine: Engine; scene: Scene } {
 
 function main(): void {
     const { engine, scene } = setupEngine()
+    const router = createRouter(scene, theme)
 
-    // Router state
-    let activeSystems: readonly System[] = []
-    let disposePage: Teardown = () => {}
-    let xrSession: XRSession | null = null
-
-    function showLobby(): void {
-        disposePage()
-        const lobby = createLobbyPage(scene)
-        activeSystems = lobby.systems
-        lobby.onPlay((seed, difficulty) => {
-            console.log(`Play: seed=${seed}, difficulty=${difficulty}`)
-            showArena()
-        })
-        disposePage = () => { lobby.dispose() }
-    }
-
-    function showArena(): void {
-        disposePage()
-        const arena = createArenaPage(scene, theme, xrSession)
-        activeSystems = arena.systems
-        arena.onReturnToLobby(() => { showLobby() })
-        disposePage = () => { arena.dispose() }
-    }
-
-    // Boot into lobby
-    showLobby()
-
-    // XR session — persistent across page transitions
-    createXRSession(scene).then((session) => {
-        xrSession = session
-    }).catch(console.error)
-
-    // Game loop reads active page's systems
     scene.onBeforeRenderObservable.add(() => {
         const dt = engine.getDeltaTime() / 1000
-        for (const system of activeSystems) {
+        for (const system of router.currentSystems()) {
             system(dt)
         }
     })

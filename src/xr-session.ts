@@ -1,5 +1,6 @@
 import { type Scene } from '@babylonjs/core/scene'
 import { WebXRDefaultExperience } from '@babylonjs/core/XR/webXRDefaultExperience'
+import { WebXRState } from '@babylonjs/core/XR/webXRTypes'
 import { type TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import { type Hand, type Teardown, isHand } from './types'
 
@@ -10,6 +11,7 @@ export interface XRSession {
     readonly controllers: ReadonlyMap<Hand, TransformNode>
     onControllerAdded(callback: ControllerAddedCallback): Teardown
     onControllerRemoved(callback: ControllerRemovedCallback): Teardown
+    onEnterXR(callback: () => void): Teardown
     dispose: Teardown
 }
 
@@ -33,6 +35,13 @@ export async function createXRSession(scene: Scene): Promise<XRSession | null> {
     const controllers = new Map<Hand, TransformNode>()
     const addListeners = new Set<ControllerAddedCallback>()
     const removeListeners = new Set<ControllerRemovedCallback>()
+    const enterXRListeners = new Set<() => void>()
+
+    xr.baseExperience.onStateChangedObservable.add((state) => {
+        if (state === WebXRState.IN_XR) {
+            for (const cb of enterXRListeners) cb()
+        }
+    })
 
     xr.input.onControllerAddedObservable.add((source) => {
         const hand = source.inputSource.handedness
@@ -61,9 +70,15 @@ export async function createXRSession(scene: Scene): Promise<XRSession | null> {
             return () => { removeListeners.delete(callback) }
         },
 
+        onEnterXR(callback) {
+            enterXRListeners.add(callback)
+            return () => { enterXRListeners.delete(callback) }
+        },
+
         dispose() {
             addListeners.clear()
             removeListeners.clear()
+            enterXRListeners.clear()
             controllers.clear()
             xr.dispose()
         },
