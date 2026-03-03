@@ -4,6 +4,7 @@ import { composeMusic } from '../music/music-composer'
 import { createMusicPlayer } from '../music/music-player'
 import { createStage } from './stage'
 import { createSabers } from './saber'
+import { createCubes } from './cubes'
 import { type XRSession } from '../xr-session'
 import { type CommandQueue } from '../command-queue'
 
@@ -21,6 +22,7 @@ export function createArenaPage(
 ): ArenaPage {
     const stage = createStage(scene, theme)
     const sabers = createSabers(scene, theme)
+    const cubes = createCubes(scene, theme)
 
     const composition = composeMusic(seed)
     const musicPlayer = createMusicPlayer(
@@ -46,6 +48,7 @@ export function createArenaPage(
         systems: [
             stage.beatDecaySystem,
             sabers.trailUpdateSystem,
+            cubes.system,
         ],
 
         dispose() {
@@ -54,6 +57,7 @@ export function createArenaPage(
             for (const [hand] of xrSession.controllers) {
                 sabers.detach(hand)
             }
+            cubes.dispose()
             sabers.dispose()
             stage.dispose()
         },
