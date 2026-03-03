@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Beat Saber Lobby</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { overflow: hidden; background: #000; font-family: 'Arial', sans-serif; }
+canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; }
+
+#hud { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; color: #fff; }
+
+/* Top bar */
+#topbar {
+  position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px;
+}
+#solo-btn {
+  background: linear-gradient(90deg, #0077cc, #00aaff);
+  border: none; color: #fff; font-size: 0.95rem; font-weight: 700;
+  letter-spacing: 4px; padding: 8px 64px; border-radius: 4px;
+  text-transform: uppercase; pointer-events: all; cursor: pointer;
+}
+#back-btn {
+  background: rgba(0,100,180,0.5); border: 1px solid #0af;
+  color: #0af; font-size: 1.1rem; font-weight: 700; padding: 7px 14px;
+  border-radius: 4px; cursor: pointer; pointer-events: all;
+}
+
+/* Left panel */
+#left-panel { position: absolute; top: 110px; left: 36px; }
+#ss-label { font-size: 2.6rem; font-weight: 900; color: #4af; text-shadow: 0 0 24px #0af8; letter-spacing: 2px; margin-bottom: 18px; }
+.section-title { font-size: 0.65rem; letter-spacing: 3px; color: #7abcdd; text-transform: uppercase; margin-bottom: 14px; }
+.modifier { font-size: 0.82rem; color: #b8d8f0; margin-bottom: 12px; line-height: 1.3; }
+.modifier .pct { font-size: 0.68rem; color: #6a9fc0; display: block; }
+
+/* Carousel */
+#carousel {
+  position: absolute; top: 86px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 6px; align-items: center;
+}
+.album {
+  width: 64px; height: 64px; border-radius: 5px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.5rem; font-weight: 800; letter-spacing: 1px;
+  text-align: center; text-transform: uppercase; color: #fff;
+  border: 2px solid transparent; cursor: pointer; pointer-events: all;
+}
+.album.active { border-color: #0af; box-shadow: 0 0 14px #0af7; }
+.ost1 { background: linear-gradient(145deg,#002870,#0055bb); }
+.ost2 { background: linear-gradient(145deg,#001d58,#0045a0); }
+.ost3 { background: linear-gradient(145deg,#1a0040,#550085); }
+.bsab { background: linear-gradient(145deg,#3a0008,#990018); }
+.vpack{ background: linear-gradient(145deg,#280010,#720028); }
+.ext  { background: linear-gradient(145deg,#001228,#002a55); }
+
+/* Song list */
+#song-list {
+  position: absolute; top: 164px; left: calc(50% - 316px);
+  width: 306px;
+  background: rgba(1,8,24,0.78); border: 1px solid rgba(0,140,255,0.18);
+  border-radius: 8px; overflow: hidden;
+}
+#list-title { font-size: 0.78rem; font-weight: 700; color: #c0dcf4; padding: 9px 14px 7px; text-align: center; border-bottom: 1px solid rgba(0,120,220,0.15); }
+.song-row { display: flex; align-items: center; padding: 6px 10px; border-bottom: 1px solid rgba(0,90,180,0.1); gap: 9px; cursor: pointer; pointer-events: all; transition: background 0.12s; }
+.song-row:hover, .song-row.sel { background: rgba(0,90,230,0.22); }
+.sthumb { width: 34px; height: 34px; border-radius: 4px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 0.42rem; color: #8cf; font-weight: 700; text-align: center; }
+.sname { font-size: 0.78rem; font-weight: 700; color: #ddeeff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sartist { font-size: 0.62rem; color: #6a9ec0; }
+.smeta { margin-left: auto; text-align: right; font-size: 0.68rem; color: #4a88bb; line-height: 1.5; white-space: nowrap; }
+
+/* Detail panel */
+#detail {
+  position: absolute; top: 164px; left: calc(50% + 2px);
+  width: 296px;
+  background: rgba(1,8,24,0.78); border: 1px solid rgba(0,140,255,0.18);
+  border-radius: 8px; padding: 12px;
+}
+#dhead { display: flex; gap: 11px; align-items: center; margin-bottom: 11px; }
+#dthumb { width: 50px; height: 50px; border-radius: 5px; flex-shrink: 0; background: linear-gradient(145deg,#002050,#004a90); display: flex; align-items: center; justify-content: center; font-size: 0.45rem; color: #7af; font-weight: 700; text-align: center; }
+#dtitle { font-size: 0.97rem; font-weight: 700; color: #e0f0ff; }
+#dartist { font-size: 0.65rem; color: #6a9ec0; margin-top: 2px; }
+#dheart { margin-left: auto; font-size: 1rem; color: #667; }
+
+#dstats { display: flex; gap: 14px; font-size: 0.68rem; color: #6a9ec0; margin-bottom: 11px; padding-bottom: 9px; border-bottom: 1px solid rgba(0,100,200,0.18); }
+
+#diffs { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 12px; }
+.db { padding: 4px 9px; border-radius: 4px; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; border: 1px solid rgba(0,140,255,0.25); color: #6a9ec0; background: rgba(0,18,55,0.6); cursor: pointer; pointer-events: all; }
+.db.on { background: rgba(0,90,230,0.38); border-color: #0af; color: #e0f8ff; box-shadow: 0 0 7px #0af3; }
+
+#actions { display: flex; gap: 8px; }
+#pbtn { flex:1; padding:9px 0; border-radius:5px; font-size:0.8rem; font-weight:700; letter-spacing:2px; text-transform:uppercase; background:rgba(0,18,55,0.7); border:1px solid rgba(0,140,255,0.3); color:#6a9ec0; cursor:pointer; pointer-events:all; }
+#playbtn { flex:1.6; padding:9px 0; border-radius:5px; font-size:0.9rem; font-weight:900; letter-spacing:3px; text-transform:uppercase; background:linear-gradient(90deg,#005ecc,#00aaff); border:none; color:#fff; cursor:pointer; pointer-events:all; box-shadow:0 0 20px #0af5; text-shadow:0 0 8px #fff; }
+
+/* Right */
+#right-panel { position: absolute; top: 110px; right: 36px; text-align: right; }
+#hs-title { font-size: 1.35rem; font-weight: 900; color: #fff; letter-spacing: 5px; text-transform: uppercase; text-shadow: 0 0 16px #0af; margin-bottom: 28px; }
+.hs-row { font-size: 0.7rem; color: #4a7a99; letter-spacing: 1px; margin-bottom: 10px; text-transform: uppercase; }
+.hs-val { font-size: 0.85rem; color: #90b8cc; font-weight: 700; }
+</style>
+</head>
+<body>
+<canvas id="renderCanvas"></canvas>
+
+<div id="hud">
+  <div id="topbar">
+    <button id="back-btn">&#8249;</button>
+    <button id="solo-btn">SOLO</button>
+  </div>
+
+  <div id="left-panel">
+    <div id="ss-label">SS</div>
+    <div class="section-title">Colors</div>
+    <div class="modifier">4 Lives</div>
+    <div class="modifier">No Arrows<span class="pct">-30 %</span></div>
+    <div class="modifier">Small Notes (beta)</div>
+    <div class="modifier">Zen Mode<span class="pct">-100 %</span></div>
+    <div class="modifier">Super Fast Song<span class="pct">+10 %</span></div>
+  </div>
+
+  <div id="carousel">
+    <div class="album ost1 active">OST<br>VOL.1</div>
+    <div class="album ost2">OST<br>VOL.2</div>
+    <div class="album ost3">OST<br>VOL.3</div>
+    <div class="album bsab">BEAT<br>SABER</div>
+    <div class="album vpack">V</div>
+    <div class="album ext">EXTRAS</div>
+  </div>
+
+  <div id="song-list">
+    <div id="list-title">Original Soundtrack Vol. 1</div>
+    <div class="song-row sel">
+      <div class="sthumb" style="background:linear-gradient(145deg,#002060,#004eaa)">$100<br>Bills</div>
+      <div><div class="sname">$100 Bills</div><div class="sartist">Jaroslav Beck</div></div>
+      <div class="smeta">2:21<br><span style="font-size:0.58rem;color:#336688">210 ♦</span></div>
+    </div>
+    <div class="song-row">
+      <div class="sthumb" style="background:linear-gradient(145deg,#002a55,#0060aa)">Bal</div>
+      <div><div class="sname">Balearic Pumping</div><div class="sartist">Jaroslav Beck</div></div>
+      <div class="smeta">2:14<br><span style="font-size:0.58rem;color:#336688">111 ♦</span></div>
+    </div>
+    <div class="song-row">
+      <div class="sthumb" style="background:linear-gradient(145deg,#380010,#880025)">BS</div>
+      <div><div class="sname">Beat Saber</div><div class="sartist">Jaroslav Beck</div></div>
+      <div class="smeta">1:50<br><span style="font-size:0.58rem;color:#336688">168 ♦</span></div>
+    </div>
+    <div class="song-row">
+      <div class="sthumb" style="background:linear-gradient(145deg,#001028,#002860)">Brz</div>
+      <div><div class="sname">Breezer</div><div class="sartist">Jaroslav Beck</div></div>
+      <div class="smeta">2:21<br><span style="font-size:0.58rem;color:#336688">221 ♦</span></div>
+    </div>
+    <div class="song-row">
+      <div class="sthumb" style="background:linear-gradient(145deg,#001838,#003878)">CP</div>
+      <div><div class="sname">Commercial Pumping</div><div class="sartist">Jaroslav Beck</div></div>
+      <div class="smeta">2:50<br><span style="font-size:0.58rem;color:#336688">105 ♦</span></div>
+    </div>
+    <div class="song-row">
+      <div class="sthumb" style="background:linear-gradient(145deg,#1a0028,#500070)">CR</div>
+      <div><div class="sname">Country Rounds Sqeepo</div><div class="sartist">Jaroslav Beck</div></div>
+      <div class="smeta">2:50<br><span style="font-size:0.58rem;color:#336688">210 ♦</span></div>
+    </div>
+  </div>
+
+  <div id="detail">
+    <div id="dhead">
+      <div id="dthumb">$100<br>Bills</div>
+      <div><div id="dtitle">$100 Bills</div><div id="dartist">Jaroslav Beck</div></div>
+      <div id="dheart">♡</div>
+    </div>
+    <div id="dstats">
+      <span>⏱ 1.38</span><span>♦ 196</span><span>✦ 18</span><span>★ 0</span>
+    </div>
+    <div id="diffs">
+      <div class="db">Easy</div>
+      <div class="db on">Normal</div>
+      <div class="db">Hard</div>
+      <div class="db">360°</div>
+      <div class="db">90°</div>
+      <div class="db">Expert</div>
+      <div class="db">Expert+</div>
+    </div>
+    <div id="actions">
+      <button id="pbtn">Practice</button>
+      <button id="playbtn">PLAY</button>
+    </div>
+  </div>
+
+  <div id="right-panel">
+    <div id="hs-title">Highscores</div>
+    <div class="hs-row">Max Combo<br><span class="hs-val">—</span></div>
+    <div class="hs-row">Highscore<br><span class="hs-val">—</span></div>
+  </div>
+</div>
+
+<script src="https://cdn.babylonjs.com/babylon.js"></script>
+<script>
+const canvas = document.getElementById("renderCanvas");
+const engine = new BABYLON.Engine(canvas, true);
+const scene = new BABYLON.Scene(engine);
+scene.clearColor = new BABYLON.Color4(0.01, 0.015, 0.055, 1);
+
+// Camera
+const camera = new BABYLON.ArcRotateCamera("cam", -Math.PI/2, Math.PI/2.15, 30, new BABYLON.Vector3(0, 3, 0), scene);
+camera.attachControl(canvas, true);
+camera.lowerRadiusLimit = 14; camera.upperRadiusLimit = 50;
+
+// === Spotlight — high above, teal/blue, pointing down-forward ===
+const spot = new BABYLON.SpotLight("spot",
+  new BABYLON.Vector3(0, 24, -6),
+  new BABYLON.Vector3(0, -1, 0.3),
+  Math.PI / 2.1, 7, scene);
+spot.diffuse = new BABYLON.Color3(0.12, 0.6, 1.0);
+spot.specular = new BABYLON.Color3(0.3, 0.75, 1.0);
+spot.intensity = 3.0;
+
+// Dim purple ambient
+const amb = new BABYLON.HemisphericLight("amb", new BABYLON.Vector3(0,1,0), scene);
+amb.diffuse = new BABYLON.Color3(0.04, 0.06, 0.16);
+amb.intensity = 0.5;
+
+// === Fog ===
+scene.fogMode = BABYLON.Scene.FOGMODE_EXP2;
+scene.fogDensity = 0.042;
+scene.fogColor = new BABYLON.Color3(0.03, 0.04, 0.13);
+
+// === Ground — very dark ===
+const gnd = BABYLON.MeshBuilder.CreateGround("gnd", {width:100, height:100}, scene);
+const gndMat = new BABYLON.StandardMaterial("gndm", scene);
+gndMat.diffuseColor = new BABYLON.Color3(0.01, 0.015, 0.04);
+gndMat.specularColor = new BABYLON.Color3(0,0,0);
+gnd.material = gndMat;
+gnd.position.y = -2;
+
+// Glowing wireframe border rectangle on ground
+const borderLine = BABYLON.MeshBuilder.CreateGround("border", {width:18, height:18, subdivisions:1}, scene);
+const borderMat = new BABYLON.StandardMaterial("borm", scene);
+borderMat.emissiveColor = new BABYLON.Color3(0, 0.45, 1.0);
+borderMat.wireframe = true;
+borderLine.material = borderMat;
+borderLine.position.y = -1.98;
+
+const glow = new BABYLON.GlowLayer("glow", scene);
+glow.intensity = 0.9;
+glow.addIncludedOnlyMesh(borderLine);
+
+// === Diagonal saber line ===
+const saberPath = [new BABYLON.Vector3(-1.5, -2, 4), new BABYLON.Vector3(3.5, 9, 3)];
+const saberTube = BABYLON.MeshBuilder.CreateTube("saber", {path: saberPath, radius: 0.038, tessellation: 8}, scene);
+const saberMat = new BABYLON.StandardMaterial("sm", scene);
+saberMat.emissiveColor = new BABYLON.Color3(0.5, 0.92, 1.0);
+saberTube.material = saberMat;
+glow.addIncludedOnlyMesh(saberTube);
+
+// === Dark box clusters (silhouettes) ===
+const clusters = [
+  {cx:-15, cz:-16, n:4}, {cx:14, cz:-14, n:4},
+  {cx:-19, cz:4,  n:3}, {cx:18, cz:6,   n:3},
+  {cx:-9,  cz:-28, n:3},{cx:9,  cz:-26, n:3},
+  {cx:-22, cz:-8, n:2}, {cx:21, cz:-8,  n:2},
+];
+clusters.forEach(({cx, cz, n}) => {
+  for (let i = 0; i < n; i++) {
+    const w = 1.5 + Math.random() * 2.5;
+    const h = 2 + Math.random() * 6;
+    const d = 1.5 + Math.random() * 2.5;
+    const box = BABYLON.MeshBuilder.CreateBox("box", {width:w, height:h, depth:d}, scene);
+    box.position = new BABYLON.Vector3(
+      cx + (Math.random()-0.5)*5,
+      h/2 - 2,
+      cz + (Math.random()-0.5)*5
+    );
+    const bm = new BABYLON.StandardMaterial("bm", scene);
+    bm.diffuseColor = new BABYLON.Color3(0.02, 0.03, 0.07);
+    bm.specularColor = new BABYLON.Color3(0,0,0);
+    box.material = bm;
+  }
+});
+
+// === Particles — slow blue drifters ===
+const ps = new BABYLON.ParticleSystem("ps", 500, scene);
+ps.particleTexture = new BABYLON.Texture("https://playground.babylonjs.com/textures/flare.png", scene);
+ps.emitter = new BABYLON.Vector3(0, 5, 0);
+ps.minEmitBox = new BABYLON.Vector3(-20, -2, -20);
+ps.maxEmitBox = new BABYLON.Vector3(20, 14, 10);
+ps.color1 = new BABYLON.Color4(0.25, 0.65, 1.0, 0.55);
+ps.color2 = new BABYLON.Color4(0.1, 0.35, 0.8, 0.25);
+ps.minSize = 0.04; ps.maxSize = 0.13;
+ps.minLifeTime = 7; ps.maxLifeTime = 14;
+ps.emitRate = 35;
+ps.direction1 = new BABYLON.Vector3(-0.15, 0.08, -0.15);
+ps.direction2 = new BABYLON.Vector3(0.15, 0.25, 0.15);
+ps.minEmitPower = 0.08; ps.maxEmitPower = 0.3;
+ps.start();
+
+// === Animate ===
+let t = 0;
+scene.registerBeforeRender(() => {
+  t += 0.014;
+  saberMat.emissiveColor = new BABYLON.Color3(0.45 + Math.sin(t*1.8)*0.08, 0.88 + Math.sin(t*1.8)*0.08, 1.0);
+  spot.position.x = Math.sin(t * 0.12) * 4;
+});
+
+engine.runRenderLoop(() => scene.render());
+window.addEventListener('resize', () => engine.resize());
+</script>
+</body>
+</html>
