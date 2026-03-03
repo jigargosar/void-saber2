@@ -17,6 +17,7 @@ See docs/BUILD-GUIDE.md for build steps and decisions. See docs/Board.md for cur
 # TypeScript
 
 - No hacks, no `as`, no `!`, etc.
+- No `let` in modules — only at the edge (main.ts router). Modules return const handles.
 
 # Scripts
 
@@ -31,7 +32,20 @@ No test runner or linter is configured.
 
 See `docs/architecture.md` for app model, routing, directory structure, and module map.
 
+## Module Pattern
+
+All modules use `createXxx(deps...) → handle` with systems, methods, and dispose. No classes. Pages implement `{ systems: System[], dispose: Teardown }`.
+
+## Command Queue
+
+Cross-page communication goes through `CommandQueue` — pages enqueue domain events, router drains once per frame. No callbacks between pages and router. Commands: `songSelected` (seed), `arenaSessionCompleted`.
+
+## XR Session
+
+Persistent across page transitions. `createXRSession` resolves only after user enters VR — non-null guarantee. Arena uses controllers for sabers, lobby will use them for laser pointers.
+
 ## Conventions
 
-- **Babylon.js imports**: Use deep imports (`@babylonjs/core/Meshes/meshBuilder`) not barrel imports.
+- **Babylon.js imports**: Use deep imports (`@babylonjs/core/Meshes/meshBuilder`) not barrel imports. Side-effect imports (e.g. `import '@babylonjs/loaders/glTF'`) go in main.ts only.
 - **Babylon.js scene**: Always pass `scene` explicitly to constructors (`new StandardMaterial(name, scene)`, `MeshBuilder.Create*(name, opts, scene)`). Never rely on Babylon's implicit "last created scene" fallback.
+- **No cross-page imports**: `lobby-page/`, `arena-page/`, and `music/` must not import from each other. Shared types go in `src/types.ts` or `music/music-types.ts`.
