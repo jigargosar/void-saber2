@@ -11,8 +11,8 @@ const DESPAWN_Z = 2
 const SPEED = 10
 const CUBE_SIZE = 0.5
 
-const LANE_POSITIONS = [-0.75, -0.25, 0.25, 0.75] as const
-const ROW_POSITIONS = [0.5, 1.0, 1.5] as const
+const LANE_POSITIONS = [-0.75, -0.25, 0.25, 0.75]
+const ROW_POSITIONS = [0.5, 1.0, 1.5]
 
 interface CubeEntry {
     readonly mesh: Mesh
