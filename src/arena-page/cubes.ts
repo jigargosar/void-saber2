@@ -2,7 +2,7 @@ import { type Scene } from '@babylonjs/core/scene'
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { type Mesh } from '@babylonjs/core/Meshes/mesh'
-import { type Theme, type System, type Teardown, type Hand, handColor } from '../types'
+import { type Seconds, type Theme, type System, type Teardown, type Hand, handColor } from '../types'
 
 const POOL_SIZE = 10
 const SPAWN_INTERVAL = 1.0
@@ -17,6 +17,7 @@ const ROW_POSITIONS = [0.5, 1.0, 1.5] as const
 interface CubeEntry {
     readonly mesh: Mesh
     readonly mat: StandardMaterial
+    spawnTime: Seconds
     active: boolean
 }
 
@@ -44,7 +45,11 @@ export interface Cubes {
     dispose: Teardown
 }
 
-export function createCubes(scene: Scene, theme: Theme): Cubes {
+export function createCubes(
+    scene: Scene,
+    theme: Theme,
+    getCurrentTime: () => Seconds,
+): Cubes {
     const pool: CubeEntry[] = []
 
     for (let i = 0; i < POOL_SIZE; i++) {
@@ -55,15 +60,15 @@ export function createCubes(scene: Scene, theme: Theme): Cubes {
         mesh.material = mat
         mesh.isVisible = false
 
-        pool.push({ mesh, mat, active: false })
+        pool.push({ mesh, mat, spawnTime: 0, active: false })
     }
 
-    let elapsedTime = 0
-    let nextSpawnTime = 1.0
+    let nextSpawnTime: Seconds = 1.0
     let patternIndex = 0
 
-    function activate(entry: CubeEntry, def: SpawnDef): void {
+    function activate(entry: CubeEntry, def: SpawnDef, songTime: Seconds): void {
         entry.active = true
+        entry.spawnTime = songTime
         entry.mat.emissiveColor = handColor(theme, def.hand)
         entry.mesh.position.set(
             LANE_POSITIONS[def.lane],
@@ -78,14 +83,14 @@ export function createCubes(scene: Scene, theme: Theme): Cubes {
         entry.mesh.isVisible = false
     }
 
-    const system: System = (dt) => {
-        elapsedTime += dt
+    const system: System = (_dt) => {
+        const songTime = getCurrentTime()
 
-        if (elapsedTime >= nextSpawnTime) {
+        if (songTime >= nextSpawnTime) {
             const inactive = pool.find(e => !e.active)
             if (inactive) {
                 const def = HARDCODED_PATTERN[patternIndex % HARDCODED_PATTERN.length]
-                activate(inactive, def)
+                activate(inactive, def, songTime)
                 patternIndex++
             }
             nextSpawnTime += SPAWN_INTERVAL
@@ -93,7 +98,7 @@ export function createCubes(scene: Scene, theme: Theme): Cubes {
 
         for (const entry of pool) {
             if (!entry.active) continue
-            entry.mesh.position.z += SPEED * dt
+            entry.mesh.position.z = SPAWN_Z + SPEED * (songTime - entry.spawnTime)
             if (entry.mesh.position.z > DESPAWN_Z) {
                 deactivate(entry)
             }

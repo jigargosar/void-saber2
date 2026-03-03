@@ -3,7 +3,7 @@ import {
     Gain, Filter, Chorus, Reverb,
     Part, start as startTone, getTransport, getDraw, getDestination,
 } from 'tone'
-import { type Teardown } from '../types'
+import { type Seconds, type Teardown } from '../types'
 import { type CommandQueue } from '../command-queue'
 import { type MusicComposition, type ChordEvent, type NoteEvent, type DrumEvent } from './music-types'
 
@@ -16,6 +16,7 @@ const TAIL_SECONDS = 1.5
 export interface MusicPlayer {
     start(): Promise<void>
     stop(): void
+    currentTime(): Seconds
     dispose: Teardown
 }
 
@@ -223,5 +224,9 @@ export function createMusicPlayer(
         master.dispose()
     }
 
-    return { start, stop, dispose }
+    function currentTime(): Seconds {
+        return transport.seconds
+    }
+
+    return { start, stop, currentTime, dispose }
 }

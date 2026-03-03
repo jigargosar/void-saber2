@@ -22,7 +22,6 @@ export function createArenaPage(
 ): ArenaPage {
     const stage = createStage(scene, theme)
     const sabers = createSabers(scene, theme)
-    const cubes = createCubes(scene, theme)
 
     const composition = composeMusic(seed)
     const musicPlayer = createMusicPlayer(
@@ -30,6 +29,9 @@ export function createArenaPage(
         () => { stage.onBeat() },
         queue,
     )
+
+    const cubes = createCubes(scene, theme, musicPlayer.currentTime)
+
     musicPlayer.start().catch(console.error)
 
     // Attach sabers to controllers
