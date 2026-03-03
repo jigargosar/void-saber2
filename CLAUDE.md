@@ -14,11 +14,6 @@ See docs/BUILD-GUIDE.md for build steps and decisions. See docs/Board.md for cur
 - Strict: never swallow any error — either fail hard or log, based on whether it makes sense to continue or it completely breaks app
 - Strict: no spooky action at a distance
 
-# TypeScript
-
-- No hacks, no `as`, no `!`, etc.
-- No `let` in modules — only at the edge (main.ts router). Modules return const handles.
-
 # Scripts
 
 - `pnpm dev` — Vite dev server (HTTPS via basicSsl, required for WebXR on Quest 2)
