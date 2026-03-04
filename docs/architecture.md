@@ -61,9 +61,22 @@ Composes music from seed, creates music player, starts playback.
 Stage + sabers + trails are per-frame systems.
 Escape key and song end both enqueue `arenaSessionCompleted`.
 
-Choreography, cube pool, collision — not yet implemented.
+Modules: stage, sabers, trails, cubes, choreography, collision.
+Cubes use music transport clock for timing (not frame dt).
 
 See `plan-arena.md` for implementation details.
+
+### Choreography — Cue Placement
+
+Cues must land on real music events. A cue at silence feels wrong — the player swings at nothing audible.
+
+1. Base candidate pool: all music event times (kick, snare, hat, bass, arp, melody, pad)
+2. Difficulty controls density in both directions:
+   - Easier: skip candidates. Energy-modulated — low energy skips more, high energy keeps more. Not uniform.
+   - Harder: interpolate between events. E.g. midpoint between kick at 2.0s and snare at 2.25s → extra cue at 2.125s.
+3. Playable window: startOffset (cube travel time) to totalTime - endOffset. No cues outside this range.
+
+The base pool is always real music events. Difficulty stretches it both ways.
 
 ## XR Session
 
@@ -97,24 +110,24 @@ src/
   │   ├── arena-page.ts      (page entry point)
   │   ├── stage.ts
   │   ├── saber.ts
-  │   └── trail.ts           (exclusive to saber)
+  │   ├── trail.ts           (exclusive to saber)
+  │   ├── cubes.ts           (cube pool, movement, beat flash)
+  │   └── choreography.ts    (cue generation from composition)
   └── music/
-      ├── music-types.ts
       ├── songs.ts            (song catalog — shared)
-      ├── music-composer.ts   (tonal)
+      ├── music-composer.ts   (tonal, owns composition types)
       ├── music-player.ts     (tone)
-      ├── beat-timeline.ts
-      └── audio.ts            (old, being replaced by music-player)
+      └── beat-timeline.ts    (owns BeatTimeline type)
 ```
 
 ## Shared Types (src/types.ts)
 
 Domain aliases: Seed, Seconds, Hand
-Gameplay: Difficulty (5 levels), Lane, Row, SwingDirection
+Gameplay: Difficulty (5 levels)
 App: System, Teardown
 Theme: Theme, handColor(), isHand()
 
-Music-specific types live in music/music-types.ts.
+Types live with their owners: composition types in music-composer.ts, BeatTimeline in beat-timeline.ts, Lane/Row/SwingDirection/Cue in choreography.ts.
 
 ## Archive
 

@@ -38,7 +38,7 @@ On song end: fire onReturnToLobby (auto-return, no user action).
 
 ### Choreography (step 10)
 
-`createChoreography(composition, beatTimeline, difficulty)` → list of cue events.
+`createChoreography(composition, beatTimeline, config)` → Choreography (list of cues).
 
 Each cue:
 - beatTime — when the cube must arrive at the hit zone
@@ -47,8 +47,21 @@ Each cue:
 - hand — left or right (determines color)
 - swingDirection — required swing to hit
 
-Difficulty controls density: fewer cues on easy, more on hard.
-Cue generation uses beat times from BeatTimeline and energy from MusicComposition.
+Config: `{ difficulty, startOffset, endOffset }`
+- startOffset — no cues before this time (cube travel duration)
+- endOffset — no cues after totalTime - endOffset
+
+#### Cue placement — music-event-driven
+
+Cues must land on real music events. A cue at silence feels arbitrary.
+
+1. Collect all music event times (kick, snare, hat, bass, arp, melody, pad) as candidate pool
+2. Difficulty subtracts or adds:
+   - Easier: skip candidates — not uniformly, energy-modulated (low energy skips more, high energy keeps more)
+   - Harder: interpolate between events (e.g. midpoint between kick at 2.0s and snare at 2.25s → extra cue at 2.125s)
+3. Energy curve modulates density in both directions
+
+The base pool is always real music events. Difficulty stretches it both ways.
 
 ### Cube Pool (step 11)
 
