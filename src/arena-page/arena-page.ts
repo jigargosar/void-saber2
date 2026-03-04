@@ -29,7 +29,7 @@ export function createArenaPage(
     const composition = composeMusic(seed)
     const musicPlayer = createMusicPlayer(
         composition,
-        () => { stage.onBeat() },
+        () => { stage.onBeat(); cubes.onBeat() }, // HACK: direct callback — replace with arena event queue
         queue,
     )
 

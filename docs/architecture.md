@@ -38,7 +38,40 @@ Static visuals with pulse animation. No user interaction — exists solely to re
 
 Song catalog in `music/songs.ts` — `Song` type with seed + name. Shared across lobby and arena.
 
-Music pipeline: `composeMusic(seed)` → `MusicComposition` → `createMusicPlayer(composition, onBeat, queue)` → `MusicPlayer`. Player enqueues `arenaSessionCompleted` when song ends. Beat callback stays direct (not queued) — `getDraw().schedule` already defers to rAF.
+### Rhythm Grid (master)
+
+All time-dependent modules derive from the rhythm grid. Grid is computed once, consumers read it.
+
+```
+createRhythmGrid(seed) → RhythmGrid
+
+RhythmGrid {
+    steps: StepInfo[]    // flat list, 8 per bar, pre-computed
+    totalBars, totalTime, structure
+}
+
+StepInfo {
+    time: Seconds
+    barIndex: number
+    energy: Energy
+    bpm: BPM
+}
+```
+
+No consumer recomputes step positions or energy lookups. All pre-resolved in the grid.
+
+Consumers:
+- Composer: places instruments on steps → events
+- Stage: reads steps for beat pulse timing + energy for intensity
+- Choreography: reads steps + energy for cue placement + difficulty scaling
+
+### Music Pipeline
+
+```
+seed → createRhythmGrid(seed) → grid
+grid → composeMusic(grid) → events only (no structural data)
+events → createMusicPlayer(events) → audio + currentTime()
+```
 
 MusicPlayer sharing and music preview — TBD.
 
@@ -57,26 +90,24 @@ See `plan-lobby.md` for implementation details.
 
 Gameplay environment. Receives scene, theme, XR session, seed, and command queue from router.
 
-Composes music from seed, creates music player, starts playback.
-Stage + sabers + trails are per-frame systems.
-Escape key and song end both enqueue `arenaSessionCompleted`.
+Pipeline: seed → rhythm grid → composer (events) + choreography (cues) → music player + cubes.
+Stage and choreography both consume the grid independently.
+Cubes use music transport clock for timing (not frame dt).
 
 Modules: stage, sabers, trails, cubes, choreography, collision.
-Cubes use music transport clock for timing (not frame dt).
+Per-frame systems: beatDecay, trailUpdate, cubeMovement, collision.
 
 See `plan-arena.md` for implementation details.
 
 ### Choreography — Cue Placement
 
-Cues must land on real music events. A cue at silence feels wrong — the player swings at nothing audible.
+Cues land on grid steps — every step has music playing (composer places instruments on the same grid). No cue at silence.
 
-1. Base candidate pool: all music event times (kick, snare, hat, bass, arp, melody, pad)
+1. Base candidate pool: grid steps within the playable window (startOffset to totalTime - endOffset)
 2. Difficulty controls density in both directions:
-   - Easier: skip candidates. Energy-modulated — low energy skips more, high energy keeps more. Not uniform.
-   - Harder: interpolate between events. E.g. midpoint between kick at 2.0s and snare at 2.25s → extra cue at 2.125s.
-3. Playable window: startOffset (cube travel time) to totalTime - endOffset. No cues outside this range.
-
-The base pool is always real music events. Difficulty stretches it both ways.
+   - Easier: skip steps. Energy-modulated — low energy skips more, high energy keeps more. Not uniform.
+   - Harder: interpolate between steps. Extra cues at midpoints between grid positions.
+3. Choreography and stage both read the grid independently. Same data, different interpretation.
 
 ## XR Session
 

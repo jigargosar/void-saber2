@@ -17,6 +17,10 @@ export const TRAVEL_DURATION: Seconds = (HIT_Z - SPAWN_Z) / SPEED
 const LANE_POSITIONS = [-0.75, -0.25, 0.25, 0.75]
 const ROW_POSITIONS = [0.5, 1.0, 1.5]
 
+// HACK: beat flash via onBeat callback — replace with arena event queue
+const BEAT_FLASH_SCALE = 1.5
+const BEAT_FLASH_DECAY = 0.12
+
 interface CubeEntry {
     readonly mesh: Mesh
     readonly mat: StandardMaterial
@@ -32,6 +36,7 @@ export interface ActiveCube {
 export interface Cubes {
     readonly hitRadius: number
     readonly system: System
+    onBeat(): void
     forEachActive(callback: (cube: ActiveCube) => void): void
     dispose: Teardown
 }
@@ -56,6 +61,7 @@ export function createCubes(
     }
 
     let cueIndex = 0
+    let beatFlash = 0
 
     function activate(entry: CubeEntry, cue: Cue): void {
         entry.active = true
@@ -74,7 +80,7 @@ export function createCubes(
         entry.mesh.isVisible = false
     }
 
-    const system: System = (_dt) => {
+    const system: System = (dt) => {
         const songTime = getCurrentTime()
 
         // Spawn cues whose spawn time has arrived
@@ -90,18 +96,30 @@ export function createCubes(
             cueIndex++
         }
 
+        // Decay beat flash
+        if (beatFlash > 0) {
+            beatFlash = Math.max(0, beatFlash - dt / BEAT_FLASH_DECAY)
+        }
+
         for (const entry of pool) {
             if (!entry.active) continue
             entry.mesh.position.z = SPAWN_Z + SPEED * (songTime - entry.spawnTime)
             if (entry.mesh.position.z > DESPAWN_Z) {
                 deactivate(entry)
+                continue
             }
+            const scale = 1 + BEAT_FLASH_SCALE * beatFlash
+            entry.mesh.scaling.setAll(scale)
         }
     }
 
     return {
         hitRadius: CUBE_SIZE / 2,
         system,
+
+        onBeat() {
+            beatFlash = 1
+        },
 
         forEachActive(callback) {
             for (const entry of pool) {

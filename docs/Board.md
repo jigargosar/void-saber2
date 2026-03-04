@@ -6,14 +6,21 @@ Board
 
 # Ready
 
-- Choreography — createChoreography(composition, beatTimeline, difficulty) → Choreography (step 10)
-
 # InProgress
 
+- Extract rhythm grid (see plan-arena.md for details)
+- Composer refactor: takes grid as input (see plan-arena.md)
+- Stage refactor: consumes grid directly (see plan-arena.md)
+- Choreography refactor: consumes grid steps + energy (see plan-arena.md)
+- Arena event queue: replace direct callbacks (see plan-arena.md)
 - Lobby menu visual improvements (10 issues in plan-lobby.md)
 
 # Done
 
+- Cube spawning + movement on music clock (step 11 — hardcoded, uses choreography)
+- Saber-cube collision detection (segment-to-sphere)
+- Move music types to owning modules (delete music-types.ts)
+- Choreography — createChoreography(composition, beatTimeline, config) → Choreography (step 10)
 - Wire menu into lobby with command queue
 - Command queue — replace callback navigation with frame-deferred command drain
 - Music player — createMusicPlayer(composition, onBeat) → MusicPlayer (step 9)
@@ -32,4 +39,3 @@ Board
 - WebXR: disable online controller repository
 - WebXR: watch for hardwareScalingLevel reset on XR session start
 - WebXR: detach FreeCamera controls on XR start
-- Pool Babylon.js meshes for beat cubes (step 11)

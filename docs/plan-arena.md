@@ -51,17 +51,9 @@ Config: `{ difficulty, startOffset, endOffset }`
 - startOffset — no cues before this time (cube travel duration)
 - endOffset — no cues after totalTime - endOffset
 
-#### Cue placement — music-event-driven
+#### Cue placement — grid-step-driven
 
-Cues must land on real music events. A cue at silence feels arbitrary.
-
-1. Collect all music event times (kick, snare, hat, bass, arp, melody, pad) as candidate pool
-2. Difficulty subtracts or adds:
-   - Easier: skip candidates — not uniformly, energy-modulated (low energy skips more, high energy keeps more)
-   - Harder: interpolate between events (e.g. midpoint between kick at 2.0s and snare at 2.25s → extra cue at 2.125s)
-3. Energy curve modulates density in both directions
-
-The base pool is always real music events. Difficulty stretches it both ways.
+See architecture.md "Choreography — Cue Placement" for design rationale.
 
 ### Cube Pool (step 11)
 
@@ -110,9 +102,42 @@ arena-page/
 
 ```
 arena create
-  → compose(seed) → timeline → choreography → musicPlayer
+  → grid(seed) → compose(grid) → choreography(grid, config) → musicPlayer(events)
+  → stage reads grid for pulse
   → musicPlayer.start()
   → render loop: move cubes, check collisions, spawn on schedule
-  → song ends → onReturnToLobby fires
+  → song ends → arena-page enqueues arenaSessionCompleted
   → dispose: stop music, return all cubes to pool, cleanup
 ```
+
+## Refactoring (Board: InProgress)
+
+### Extract rhythm grid
+- Create `createRhythmGrid(seed) → RhythmGrid`
+- Output: flat `StepInfo[]` (time, barIndex, energy, bpm), 8 steps per bar, pre-computed
+- Currently fused inside `composeMusic` — extract the structural computation
+
+### Composer refactor
+- `composeMusic(grid) → events only`
+- Remove structural data from MusicComposition (barStartTimes, barDurations, energyCurve, etc.)
+- Composer reads grid steps, places instruments on them
+
+### Stage refactor
+- Stage consumes grid directly for beat pulse timing + energy intensity
+- Replaces current BeatTimeline / onBeat callback dependency
+- Independently decides pulse behavior from grid energy
+
+### Choreography refactor
+- Consumes grid steps + energy for cue placement
+- Difficulty scales density: easier skips steps (energy-modulated), harder interpolates between steps
+- No longer needs composition event times or BeatTimeline
+
+### Hack cleanup (after arena event queue is in place)
+- cubes.ts: remove onBeat(), beatFlash state, BEAT_FLASH_SCALE/DECAY constants, scaling in system
+- arena-page.ts: remove cubes.onBeat() from direct callback
+- Both replaced by beat events from arena event queue
+
+### Arena event queue
+1. Create arena event queue for intra-arena communication (beat, songEnd, etc.)
+2. Stage and cubes consume beat events from queue — remove onBeat callback from music player
+3. Song-end detection moves to arena-page — remove CommandQueue from music player
