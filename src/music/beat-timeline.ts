@@ -1,4 +1,11 @@
-import { type MusicComposition, type BeatTimeline } from './music-types'
+import { type Seconds } from '../types'
+import { type MusicComposition } from './music-composer'
+
+export interface BeatTimeline {
+    readonly beatTimes: readonly Seconds[]
+    readonly totalBeats: number
+    readonly totalTime: Seconds
+}
 
 const BEATS_PER_BAR = 4
 

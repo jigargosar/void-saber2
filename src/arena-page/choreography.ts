@@ -1,5 +1,6 @@
 import { type Seed, type Seconds, type Hand, type Difficulty } from '../types'
-import { type MusicComposition, type BeatTimeline } from '../music/music-types'
+import { type MusicComposition } from '../music/music-composer'
+import { type BeatTimeline } from '../music/beat-timeline'
 
 // ── Types ────────────────────────────────────────────────────
 

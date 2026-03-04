@@ -5,7 +5,7 @@ import {
 } from 'tone'
 import { type Seconds, type Teardown } from '../types'
 import { type CommandQueue } from '../command-queue'
-import { type MusicComposition, type ChordEvent, type NoteEvent, type DrumEvent } from './music-types'
+import { type MusicComposition, type ChordEvent, type NoteEvent, type DrumEvent } from './music-composer'
 
 // Transport BPM is fixed — actual timing is pre-baked into absolute event times
 const TRANSPORT_BPM = 128
