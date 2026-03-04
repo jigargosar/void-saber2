@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>01 — Debug GUI Panel v5</title>
+  <title>01 — Debug GUI Panel v1</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #000; overflow: hidden; }
@@ -17,29 +17,31 @@
       border-radius: 8px;
       padding: 16px 20px;
       color: #fff;
-      font: 16px/2 monospace;
+      font: 15px/2 monospace;
       min-width: 260px;
       z-index: 10;
     }
     #debug h3 {
-      font-size: 14px;
+      font-size: 13px;
       color: #88ccff;
-      letter-spacing: 0.08em;
+      letter-spacing: 0.1em;
       text-transform: uppercase;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
     }
     #debug label {
       display: flex;
-      justify-content: space-between;
       align-items: center;
       gap: 10px;
+      line-height: 1;
+      margin-bottom: 10px;
     }
-    #debug span.name { flex: 0 0 100px; font-size: 14px; color: #ccc; }
-    #debug span.val  { flex: 0 0 36px; text-align: right; font-size: 14px; color: #fff; }
+    #debug .name { flex: 0 0 90px; font-size: 13px; color: #aaa; }
+    #debug .val  { flex: 0 0 32px; text-align: right; font-size: 13px; color: #fff; }
     #debug input[type=range] {
       flex: 1;
       accent-color: #00aaff;
       cursor: pointer;
+      height: 4px;
     }
   </style>
 </head>
@@ -48,10 +50,10 @@
 
   <div id="debug">
     <h3>Visual Debug</h3>
-    <label><span class="name">ambient</span>    <input type="range" id="s-ambient"  min="0" max="1" step="0.01" value="0.15"> <span class="val" id="v-ambient">0.15</span></label>
-    <label><span class="name">key light</span>  <input type="range" id="s-key"      min="0" max="3" step="0.01" value="1.8">  <span class="val" id="v-key">1.80</span></label>
-    <label><span class="name">glow</span>       <input type="range" id="s-glow"     min="0" max="2" step="0.01" value="0.8">  <span class="val" id="v-glow">0.80</span></label>
-    <label><span class="name">bloom</span>      <input type="range" id="s-bloom"    min="0" max="1" step="0.01" value="0.3">  <span class="val" id="v-bloom">0.30</span></label>
+    <label><span class="name">ambient</span>   <input type="range" id="s-ambient" min="0" max="1"   step="0.01" value="0.15"> <span class="val" id="v-ambient">0.15</span></label>
+    <label><span class="name">key light</span> <input type="range" id="s-key"     min="0" max="3"   step="0.01" value="1.8">  <span class="val" id="v-key">1.80</span></label>
+    <label><span class="name">glow</span>      <input type="range" id="s-glow"    min="0" max="2"   step="0.01" value="0.8">  <span class="val" id="v-glow">0.80</span></label>
+    <label><span class="name">bloom</span>     <input type="range" id="s-bloom"   min="0" max="1"   step="0.01" value="0.3">  <span class="val" id="v-bloom">0.30</span></label>
   </div>
 
   <script type="module">
@@ -117,7 +119,7 @@
     pipeline.bloomScale = 0.5
     pipeline.fxaaEnabled = true
 
-    // ── Wire HTML sliders to scene objects ────────────────────────────────────
+    // ── Wire sliders ──────────────────────────────────────────────────────────
     function wire(sliderId, valId, onChange) {
       const slider = document.getElementById(sliderId)
       const val    = document.getElementById(valId)
