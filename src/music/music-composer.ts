@@ -148,8 +148,8 @@ function energyLevel(energy: number): EnergyLevel {
 
 // ── Arp Patterns ─────────────────────────────────────────────
 
-type ArpStyle = 'up' | 'down' | 'updown' | 'random'
-const ARP_STYLES: readonly ArpStyle[] = ['up', 'down', 'updown', 'random']
+type ArpStyle = 'up' | 'down' | 'updown' | 'non-sequential'
+const ARP_STYLES: readonly ArpStyle[] = ['up', 'down', 'updown', 'non-sequential']
 
 function generateArpPattern(chordNotes: string[], style: ArpStyle, energy: number, rng: () => number): (string | null)[] {
     const steps: (string | null)[] = []
