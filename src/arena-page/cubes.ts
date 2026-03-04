@@ -2,6 +2,7 @@ import { type Scene } from '@babylonjs/core/scene'
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { type Mesh } from '@babylonjs/core/Meshes/mesh'
+import { type Vector3 } from '@babylonjs/core/Maths/math'
 import { type Seconds, type Theme, type System, type Teardown, type Hand, handColor } from '../types'
 
 const POOL_SIZE = 10
@@ -40,8 +41,15 @@ const HARDCODED_PATTERN: readonly SpawnDef[] = [
     { lane: 2, row: 2, hand: 'right' },
 ]
 
+export interface ActiveCube {
+    readonly position: Vector3
+    deactivate(): void
+}
+
 export interface Cubes {
+    readonly hitRadius: number
     readonly system: System
+    forEachActive(callback: (cube: ActiveCube) => void): void
     dispose: Teardown
 }
 
@@ -106,7 +114,18 @@ export function createCubes(
     }
 
     return {
+        hitRadius: CUBE_SIZE / 2,
         system,
+
+        forEachActive(callback) {
+            for (const entry of pool) {
+                if (!entry.active) continue
+                callback({
+                    position: entry.mesh.position,
+                    deactivate: () => deactivate(entry),
+                })
+            }
+        },
 
         dispose() {
             for (const { mesh, mat } of pool) {

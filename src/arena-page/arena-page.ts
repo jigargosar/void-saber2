@@ -1,4 +1,5 @@
 import { type Scene } from '@babylonjs/core/scene'
+import { Vector3 } from '@babylonjs/core/Maths/math'
 import { type Seed, type Theme, type System, type Teardown } from '../types'
 import { composeMusic } from '../music/music-composer'
 import { createMusicPlayer } from '../music/music-player'
@@ -46,11 +47,40 @@ export function createArenaPage(
     }
     document.addEventListener('keydown', onKey)
 
+    // ── Collision: segment-to-sphere check ──────────────────
+    const segAB = new Vector3()
+    const segAP = new Vector3()
+
+    function distanceSegmentToPoint(segA: Vector3, segB: Vector3, point: Vector3): number {
+        segB.subtractToRef(segA, segAB)
+        point.subtractToRef(segA, segAP)
+        const lenSq = segAB.lengthSquared()
+        const t = Math.max(0, Math.min(1, Vector3.Dot(segAP, segAB) / lenSq))
+        const closestX = segA.x + segAB.x * t
+        const closestY = segA.y + segAB.y * t
+        const closestZ = segA.z + segAB.z * t
+        const dx = point.x - closestX
+        const dy = point.y - closestY
+        const dz = point.z - closestZ
+        return Math.sqrt(dx * dx + dy * dy + dz * dz)
+    }
+
+    const collisionSystem: System = () => {
+        cubes.forEachActive((cube) => {
+            sabers.forEachBlade((tip, base) => {
+                if (distanceSegmentToPoint(tip, base, cube.position) < cubes.hitRadius) {
+                    cube.deactivate()
+                }
+            })
+        })
+    }
+
     return {
         systems: [
             stage.beatDecaySystem,
             sabers.trailUpdateSystem,
             cubes.system,
+            collisionSystem,
         ],
 
         dispose() {

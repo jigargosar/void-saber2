@@ -21,14 +21,21 @@ interface SaberParts {
     readonly blade: Mesh
 }
 
+interface BladeSegment {
+    readonly tip: Vector3
+    readonly base: Vector3
+}
+
 interface SaberEntry {
     readonly parts: SaberParts
     readonly trail: Trail
+    readonly blade: BladeSegment
 }
 
 export interface Sabers {
     attach(hand: Hand, grip: TransformNode): void
     detach(hand: Hand): void
+    forEachBlade(callback: (tip: Vector3, base: Vector3) => void): void
     readonly trailUpdateSystem: System
     dispose: Teardown
 }
@@ -68,17 +75,14 @@ function buildSaber(scene: Scene, name: string, color: Color3): SaberParts {
 export function createSabers(scene: Scene, theme: Theme): Sabers {
     const sabers = new Map<Hand, SaberEntry>()
 
-    // Pre-allocated scratch vectors for world-space blade endpoints
-    const tipWorld = new Vector3()
-    const baseWorld = new Vector3()
-
     return {
         attach(hand, grip) {
             const color = handColor(theme, hand)
             const parts = buildSaber(scene, `${hand}Saber`, color)
             parts.root.parent = grip
             const trail = createTrail(scene, `${hand}Trail`, color)
-            sabers.set(hand, { parts, trail })
+            const blade: BladeSegment = { tip: new Vector3(), base: new Vector3() }
+            sabers.set(hand, { parts, trail, blade })
         },
 
         detach(hand) {
@@ -89,13 +93,19 @@ export function createSabers(scene: Scene, theme: Theme): Sabers {
             sabers.delete(hand)
         },
 
+        forEachBlade(callback) {
+            for (const { blade } of sabers.values()) {
+                callback(blade.tip, blade.base)
+            }
+        },
+
         trailUpdateSystem: (dt) => {
-            for (const { parts, trail } of sabers.values()) {
+            for (const { parts, trail, blade } of sabers.values()) {
                 parts.blade.computeWorldMatrix(true)
                 const worldMatrix = parts.blade.getWorldMatrix()
-                Vector3.TransformCoordinatesToRef(BLADE_TIP_LOCAL, worldMatrix, tipWorld)
-                Vector3.TransformCoordinatesToRef(BLADE_BASE_LOCAL, worldMatrix, baseWorld)
-                trail.sample(tipWorld, baseWorld, dt)
+                Vector3.TransformCoordinatesToRef(BLADE_TIP_LOCAL, worldMatrix, blade.tip)
+                Vector3.TransformCoordinatesToRef(BLADE_BASE_LOCAL, worldMatrix, blade.base)
+                trail.sample(blade.tip, blade.base, dt)
             }
         },
 
