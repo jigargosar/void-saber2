@@ -5,7 +5,9 @@ import { composeMusic } from '../music/music-composer'
 import { createMusicPlayer } from '../music/music-player'
 import { createStage } from './stage'
 import { createSabers } from './saber'
-import { createCubes } from './cubes'
+import { createCubes, TRAVEL_DURATION } from './cubes'
+import { createChoreography } from './choreography'
+import { extractBeatTimeline } from '../music/beat-timeline'
 import { type XRSession } from '../xr-session'
 import { type CommandQueue } from '../command-queue'
 
@@ -31,7 +33,13 @@ export function createArenaPage(
         queue,
     )
 
-    const cubes = createCubes(scene, theme, musicPlayer.currentTime)
+    const beatTimeline = extractBeatTimeline(composition)
+    const choreography = createChoreography(composition, beatTimeline, {
+        difficulty: 'normal',
+        startOffset: TRAVEL_DURATION,
+        endOffset: 2.0,
+    })
+    const cubes = createCubes(scene, theme, musicPlayer.currentTime, choreography.cues)
 
     musicPlayer.start().catch(console.error)
 
