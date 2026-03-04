@@ -46,8 +46,9 @@ All time-dependent modules derive from the rhythm grid. Grid is computed once, c
 createRhythmGrid(seed) → RhythmGrid
 
 RhythmGrid {
-    steps: StepInfo[]    // flat list, 8 per bar, pre-computed
-    totalBars, totalTime, structure
+    seed, steps: StepInfo[]    // flat list, 8 per bar, pre-computed
+    totalBars, totalTime, structureName, sectionNames
+    barStartTimes, barDurations, energyCurve, bpmCurve
 }
 
 StepInfo {
@@ -61,16 +62,16 @@ StepInfo {
 No consumer recomputes step positions or energy lookups. All pre-resolved in the grid.
 
 Consumers:
-- Composer: places instruments on steps → events
-- Stage: reads steps for beat pulse timing + energy for intensity
-- Choreography: reads steps + energy for cue placement + difficulty scaling
+- Composer: reads grid timing/energy, places instruments on steps → events
+- Stage: receives beat events from arena event queue for pulse
+- Choreography: reads grid steps + energy for cue placement + difficulty scaling
 
 ### Music Pipeline
 
 ```
 seed → createRhythmGrid(seed) → grid
 grid → composeMusic(grid) → events only (no structural data)
-events → createMusicPlayer(events) → audio + currentTime()
+grid + events → createMusicPlayer(grid, composition) → audio + currentTime()
 ```
 
 MusicPlayer sharing and music preview — TBD.
@@ -94,8 +95,19 @@ Pipeline: seed → rhythm grid → composer (events) + choreography (cues) → m
 Stage and choreography both consume the grid independently.
 Cubes use music transport clock for timing (not frame dt).
 
-Modules: stage, sabers, trails, cubes, choreography, collision.
-Per-frame systems: beatDecay, trailUpdate, cubeMovement, collision.
+### Arena Event Queue
+
+Intra-arena communication via typed events + buffer-swap drain (same pattern as router CommandQueue).
+
+Events: `beat` (fired when kick events pass in music clock), `songEnd` (fired after totalTime + tail).
+
+Per-frame systems:
+1. `beatSchedule.system` — checks music clock against kick times, emits beat events
+2. `songEndDetector.system` — checks music clock against song end, emits songEnd
+3. `arenaEventSystem` — drains arena queue, dispatches to stage.onBeat/cubes.onBeat/songEnd handling
+
+Modules: stage, sabers, trails, cubes, choreography, collision, arena-events.
+Per-frame systems: beatSchedule, songEndDetector, arenaEventDrain, beatDecay, trailUpdate, cubeMovement, collision.
 
 See `plan-arena.md` for implementation details.
 
@@ -139,26 +151,27 @@ src/
   │   └── menu.ts            (song list + difficulty + play)
   ├── arena-page/
   │   ├── arena-page.ts      (page entry point)
+  │   ├── arena-events.ts    (arena event queue, beat schedule, song end detection)
   │   ├── stage.ts
   │   ├── saber.ts
   │   ├── trail.ts           (exclusive to saber)
   │   ├── cubes.ts           (cube pool, movement, beat flash)
-  │   └── choreography.ts    (cue generation from composition)
+  │   └── choreography.ts    (cue generation from grid)
   └── music/
       ├── songs.ts            (song catalog — shared)
-      ├── music-composer.ts   (tonal, owns composition types)
-      ├── music-player.ts     (tone)
-      └── beat-timeline.ts    (owns BeatTimeline type)
+      ├── rhythm-grid.ts      (master timing: seed → grid of StepInfo[])
+      ├── music-composer.ts   (tonal, grid → events)
+      └── music-player.ts     (tone, grid + events → audio)
 ```
 
 ## Shared Types (src/types.ts)
 
-Domain aliases: Seed, Seconds, Hand
+Domain aliases: Seed, Seconds, Hand, BPM, Energy
 Gameplay: Difficulty (5 levels)
 App: System, Teardown
 Theme: Theme, handColor(), isHand()
 
-Types live with their owners: composition types in music-composer.ts, BeatTimeline in beat-timeline.ts, Lane/Row/SwingDirection/Cue in choreography.ts.
+Types live with their owners: RhythmGrid/StepInfo in rhythm-grid.ts, composition event types in music-composer.ts, Lane/Row/SwingDirection/Cue in choreography.ts, ArenaEvent in arena-events.ts.
 
 ## Archive
 

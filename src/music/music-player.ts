@@ -1,16 +1,15 @@
 import {
     PolySynth, Synth, MonoSynth, MembraneSynth, NoiseSynth,
     Gain, Filter, Chorus, Reverb,
-    Part, start as startTone, getTransport, getDraw, getDestination,
+    Part, start as startTone, getTransport, getDestination,
 } from 'tone'
 import { type Seconds, type Teardown } from '../types'
-import { type CommandQueue } from '../command-queue'
+import { type RhythmGrid } from './rhythm-grid'
 import { type MusicComposition, type ChordEvent, type NoteEvent, type DrumEvent } from './music-composer'
 
 // Transport BPM is fixed — actual timing is pre-baked into absolute event times
 const TRANSPORT_BPM = 128
-// Seconds of silence after song ends before full stop
-const TAIL_SECONDS = 1.5
+
 // ── Public interface ─────────────────────────────────────────
 
 export interface MusicPlayer {
@@ -21,9 +20,8 @@ export interface MusicPlayer {
 }
 
 export function createMusicPlayer(
+    grid: RhythmGrid,
     composition: MusicComposition,
-    onBeat: () => void,
-    queue: CommandQueue,
 ): MusicPlayer {
     const transport = getTransport()
     const parts: Part[] = []
@@ -127,8 +125,6 @@ export function createMusicPlayer(
     if (composition.kickEvents.length > 0) {
         const kickPart = new Part((time, e: DrumEvent) => {
             kick.triggerAttackRelease('C1', '8n', time, e.vel)
-            // Fire onBeat on the animation frame for visual sync
-            getDraw().schedule(onBeat, time)
         }, composition.kickEvents.map(e => ({ ...e })))
         kickPart.start(0)
         parts.push(kickPart)
@@ -168,18 +164,11 @@ export function createMusicPlayer(
 
     // ── Master fade on last bar ──────────────────────────────
 
-    const lastBarDur = composition.barDurations[composition.totalBars - 1]
+    const lastBarDur = grid.barDurations[grid.totalBars - 1]
     transport.schedule((time) => {
         master.gain.setValueAtTime(1, time)
         master.gain.linearRampToValueAtTime(0, time + lastBarDur)
-    }, composition.totalTime - lastBarDur)
-
-    // ── Auto-stop after song ends ────────────────────────────
-
-    transport.schedule(() => {
-        stop()
-        queue.enqueue({ type: 'arenaSessionCompleted' })
-    }, composition.totalTime + TAIL_SECONDS)
+    }, grid.totalTime - lastBarDur)
 
     // ── Transport config ─────────────────────────────────────
 
@@ -197,11 +186,13 @@ export function createMusicPlayer(
         transport.cancel()
     }
 
+    function currentTime(): Seconds {
+        return transport.seconds
+    }
+
     function dispose(): void {
         stop()
-        // Parts first
         for (const p of parts) p.dispose()
-        // Synths
         pad.dispose()
         bass.dispose()
         kick.dispose()
@@ -209,7 +200,6 @@ export function createMusicPlayer(
         hat.dispose()
         arp.dispose()
         melody.dispose()
-        // Effects
         padChorus.dispose()
         padFilter.dispose()
         padReverb.dispose()
@@ -220,12 +210,7 @@ export function createMusicPlayer(
         arpReverb.dispose()
         melodyFilter.dispose()
         melodyReverb.dispose()
-        // Master last
         master.dispose()
-    }
-
-    function currentTime(): Seconds {
-        return transport.seconds
     }
 
     return { start, stop, currentTime, dispose }

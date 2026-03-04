@@ -177,6 +177,10 @@ export function createStage(scene: Scene, theme: Theme): Stage {
 
     let beatFlash = 0
 
+    const BEAT_DECAY_RATE: Seconds = 0.12
+    const FOG_FLASH_MULT = 0.8
+    const PILLAR_FLASH_MULT = 1.5
+
     return {
         onBeat() {
             beatFlash = 1
@@ -184,11 +188,11 @@ export function createStage(scene: Scene, theme: Theme): Stage {
 
         beatDecaySystem: (dt: Seconds) => {
             if (beatFlash <= 0) return
-            beatFlash = Math.max(0, beatFlash - dt / 0.12)
+            beatFlash = Math.max(0, beatFlash - dt / BEAT_DECAY_RATE)
 
-            scene.fogDensity = FOG_DENSITY_BASE * (1 + 0.8 * beatFlash)
+            scene.fogDensity = FOG_DENSITY_BASE * (1 + FOG_FLASH_MULT * beatFlash)
             for (const { mat, baseColor } of pillarTargets) {
-                mat.emissiveColor = baseColor.scale(1 + 1.5 * beatFlash)
+                mat.emissiveColor = baseColor.scale(1 + PILLAR_FLASH_MULT * beatFlash)
             }
         },
 

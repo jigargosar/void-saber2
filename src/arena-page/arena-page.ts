@@ -1,13 +1,14 @@
 import { type Scene } from '@babylonjs/core/scene'
 import { Vector3 } from '@babylonjs/core/Maths/math'
 import { type Seed, type Theme, type System, type Teardown } from '../types'
+import { createRhythmGrid } from '../music/rhythm-grid'
 import { composeMusic } from '../music/music-composer'
 import { createMusicPlayer } from '../music/music-player'
 import { createStage } from './stage'
 import { createSabers } from './saber'
 import { createCubes, TRAVEL_DURATION } from './cubes'
 import { createChoreography } from './choreography'
-import { extractBeatTimeline } from '../music/beat-timeline'
+import { createArenaEventQueue, createBeatSchedule, createSongEndDetector } from './arena-events'
 import { type XRSession } from '../xr-session'
 import { type CommandQueue } from '../command-queue'
 
@@ -23,31 +24,47 @@ export function createArenaPage(
     seed: Seed,
     queue: CommandQueue,
 ): ArenaPage {
+    // ── Rhythm grid (master timing source) ───────────────────
+    const grid = createRhythmGrid(seed)
+
+    // ── Music ────────────────────────────────────────────────
+    const composition = composeMusic(grid)
+    const musicPlayer = createMusicPlayer(grid, composition)
+
+    // ── Arena event queue (intra-arena communication) ────────
+    const arenaQueue = createArenaEventQueue()
+    const beatSchedule = createBeatSchedule(
+        composition.kickEvents.map(e => e.time),
+        musicPlayer.currentTime,
+        arenaQueue,
+    )
+    const songEndDetector = createSongEndDetector(
+        grid.totalTime,
+        musicPlayer.currentTime,
+        arenaQueue,
+    )
+
+    // ── Stage + sabers ───────────────────────────────────────
     const stage = createStage(scene, theme)
     const sabers = createSabers(scene, theme)
 
-    const composition = composeMusic(seed)
-    const musicPlayer = createMusicPlayer(
-        composition,
-        () => { stage.onBeat(); cubes.onBeat() }, // HACK: direct callback — replace with arena event queue
-        queue,
-    )
-
-    const beatTimeline = extractBeatTimeline(composition)
-    const choreography = createChoreography(composition, beatTimeline, {
+    // ── Choreography + cubes ─────────────────────────────────
+    const choreography = createChoreography(grid, {
         difficulty: 'normal',
         startOffset: TRAVEL_DURATION,
         endOffset: 2.0,
     })
     const cubes = createCubes(scene, theme, musicPlayer.currentTime, choreography.cues)
 
+    // ── Start music ──────────────────────────────────────────
     musicPlayer.start().catch(console.error)
 
-    // Attach sabers to controllers
+    // ── Attach sabers to controllers ─────────────────────────
     for (const [hand, grip] of xrSession.controllers) {
         sabers.attach(hand, grip)
     }
 
+    // ── Keyboard escape ──────────────────────────────────────
     const onKey = (e: KeyboardEvent) => {
         if (e.key === 'Escape') {
             queue.enqueue({ type: 'arenaSessionCompleted' })
@@ -55,7 +72,23 @@ export function createArenaPage(
     }
     document.addEventListener('keydown', onKey)
 
-    // ── Collision: segment-to-sphere check ──────────────────
+    // ── Arena event handler ──────────────────────────────────
+    const arenaEventSystem: System = () => {
+        arenaQueue.drain((event) => {
+            switch (event.type) {
+                case 'beat':
+                    stage.onBeat()
+                    cubes.onBeat()
+                    break
+                case 'songEnd':
+                    musicPlayer.stop()
+                    queue.enqueue({ type: 'arenaSessionCompleted' })
+                    break
+            }
+        })
+    }
+
+    // ── Collision: segment-to-sphere check ───────────────────
     const segAB = new Vector3()
     const segAP = new Vector3()
 
@@ -85,6 +118,9 @@ export function createArenaPage(
 
     return {
         systems: [
+            beatSchedule.system,
+            songEndDetector.system,
+            arenaEventSystem,
             stage.beatDecaySystem,
             sabers.trailUpdateSystem,
             cubes.system,

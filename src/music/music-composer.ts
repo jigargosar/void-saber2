@@ -1,10 +1,9 @@
 import { Note, Scale, Progression, Voicing, VoiceLeading, VoicingDictionary } from 'tonal'
-import { type Seed, type Seconds } from '../types'
+import { type Seconds } from '../types'
+import { type RhythmGrid } from './rhythm-grid'
 
 // ── Domain aliases ───────────────────────────────────────────
 
-export type BPM = number
-export type Energy = number       // 0–1, drives density/intensity
 export type Velocity = number     // 0–1
 export type NoteName = string     // e.g. 'C2', 'E3'
 
@@ -29,30 +28,19 @@ export interface DrumEvent {
     readonly vel: Velocity
 }
 
-// ── Composition data ─────────────────────────────────────────
+// ── Composition data (events only — structural data lives in RhythmGrid) ──
 
-export interface BarData {
+export interface BarVoicing {
     readonly bar: number
-    readonly section: string
-    readonly energy: Energy
-    readonly bpm: BPM
     readonly chordSymbol: string
     readonly numeral: string
     readonly voiced: readonly NoteName[]
 }
 
 export interface MusicComposition {
-    readonly seed: Seed
-    readonly tonic: NoteName
-    readonly structureName: string
     readonly orderingName: string
-    readonly totalBars: number
-    readonly totalTime: Seconds
-    readonly bars: readonly BarData[]
-    readonly energyCurve: readonly Energy[]
-    readonly bpmCurve: readonly BPM[]
-    readonly barStartTimes: readonly Seconds[]
-    readonly barDurations: readonly Seconds[]
+    readonly tonic: NoteName
+    readonly barVoicings: readonly BarVoicing[]
     readonly padEvents: readonly ChordEvent[]
     readonly bassEvents: readonly NoteEvent[]
     readonly kickEvents: readonly DrumEvent[]
@@ -62,60 +50,28 @@ export interface MusicComposition {
     readonly melodyEvents: readonly NoteEvent[]
 }
 
-// ── Seeded RNG ───────────────────────────────────────────────
+// ── Seeded RNG (composer-local, independent of grid RNG) ─────
 
-let _seed = 42
-
-function seedRng(s: number): void { _seed = s }
-function rng(): number { _seed = (_seed * 16807) % 2147483647; return (_seed - 1) / 2147483646 }
-function rngInt(min: number, max: number): number { return min + Math.floor(rng() * (max - min + 1)) }
-function pick<T>(arr: readonly T[]): T { return arr[Math.floor(rng() * arr.length)] }
+function createComposerRng(seed: number) {
+    let s = (seed * 3) % 2147483647 || 1 // derive different sequence from same seed
+    function rng(): number {
+        s = (s * 16807) % 2147483647
+        return (s - 1) / 2147483646
+    }
+    function rngInt(min: number, max: number): number {
+        return min + Math.floor(rng() * (max - min + 1))
+    }
+    function pick<T>(arr: readonly T[]): T {
+        return arr[Math.floor(rng() * arr.length)]
+    }
+    return { rng, rngInt, pick }
+}
 
 // ── Constants ────────────────────────────────────────────────
 
-const BPM_CENTER = 128
-const BPM_RANGE = 12
 const KEY_POOL = ['C', 'D', 'E', 'F', 'G', 'A'] as const
 const VOICE_RANGE: [string, string] = ['C3', 'C5']
 const MIN_VEL = 0.03
-
-// ── Song Structures ──────────────────────────────────────────
-
-interface SectionDef {
-    readonly name: string
-    readonly bars: number
-    readonly energy: Energy
-}
-
-const STRUCTURE_NAMES = ['Standard', 'Slow Burn', 'Energetic', 'Minimal', 'Epic'] as const
-
-const STRUCTURES: readonly (readonly SectionDef[])[] = [
-    [
-        { name: 'intro', bars: 4, energy: 0.15 }, { name: 'build', bars: 4, energy: 0.45 },
-        { name: 'main', bars: 8, energy: 0.75 },  { name: 'break', bars: 4, energy: 0.3 },
-        { name: 'peak', bars: 8, energy: 1.0 },   { name: 'outro', bars: 4, energy: 0.1 },
-    ],
-    [
-        { name: 'intro', bars: 4, energy: 0.1 },  { name: 'intro2', bars: 4, energy: 0.2 },
-        { name: 'build', bars: 4, energy: 0.5 },  { name: 'main', bars: 8, energy: 0.75 },
-        { name: 'peak', bars: 8, energy: 1.0 },   { name: 'outro', bars: 4, energy: 0.15 },
-    ],
-    [
-        { name: 'build', bars: 4, energy: 0.5 },  { name: 'main', bars: 8, energy: 0.8 },
-        { name: 'peak', bars: 8, energy: 1.0 },   { name: 'break', bars: 4, energy: 0.35 },
-        { name: 'peak2', bars: 8, energy: 0.95 }, { name: 'outro', bars: 4, energy: 0.2 },
-    ],
-    [
-        { name: 'intro', bars: 4, energy: 0.15 }, { name: 'build', bars: 4, energy: 0.4 },
-        { name: 'main', bars: 8, energy: 0.65 },  { name: 'build2', bars: 4, energy: 0.5 },
-        { name: 'main2', bars: 8, energy: 0.7 },  { name: 'outro', bars: 4, energy: 0.1 },
-    ],
-    [
-        { name: 'intro', bars: 4, energy: 0.1 },  { name: 'build', bars: 4, energy: 0.4 },
-        { name: 'build2', bars: 4, energy: 0.6 }, { name: 'main', bars: 8, energy: 0.85 },
-        { name: 'peak', bars: 8, energy: 1.0 },   { name: 'peak2', bars: 8, energy: 0.95 },
-    ],
-]
 
 // ── Markov Transition Matrix ─────────────────────────────────
 
@@ -130,7 +86,7 @@ const MARKOV: Record<Numeral, readonly (readonly [Numeral, number])[]> = {
     'bVII': [['Im', 3],   ['bIII', 2], ['IVm', 1], ['bVI', 2]],
 }
 
-function markovNext(current: Numeral): Numeral {
+function markovNext(current: Numeral, rng: () => number): Numeral {
     const transitions = MARKOV[current]
     const totalWeight = transitions.reduce((sum, [, w]) => sum + w, 0)
     let r = rng() * totalWeight
@@ -141,9 +97,9 @@ function markovNext(current: Numeral): Numeral {
     return transitions[transitions.length - 1][0]
 }
 
-function generatePhrase(): Numeral[] {
+function generatePhrase(rng: () => number): Numeral[] {
     const walk: Numeral[] = ['Im']
-    for (let i = 1; i < 4; i++) walk.push(markovNext(walk[i - 1]))
+    for (let i = 1; i < 4; i++) walk.push(markovNext(walk[i - 1], rng))
     return walk
 }
 
@@ -183,7 +139,7 @@ const HAT_PATTERNS: DrumPatternSet = {
     peak: [[1, 1, 1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 0, 1, 1], [1, 0, 1, 1, 1, 1, 1, 0]],
 }
 
-function energyLevel(energy: Energy): EnergyLevel {
+function energyLevel(energy: number): EnergyLevel {
     if (energy < 0.25) return 'low'
     if (energy < 0.55) return 'mid'
     if (energy < 0.85) return 'high'
@@ -195,7 +151,7 @@ function energyLevel(energy: Energy): EnergyLevel {
 type ArpStyle = 'up' | 'down' | 'updown' | 'random'
 const ARP_STYLES: readonly ArpStyle[] = ['up', 'down', 'updown', 'random']
 
-function generateArpPattern(chordNotes: string[], style: ArpStyle, energy: Energy): (string | null)[] {
+function generateArpPattern(chordNotes: string[], style: ArpStyle, energy: number, rng: () => number): (string | null)[] {
     const steps: (string | null)[] = []
     const len = chordNotes.length
     for (let step = 0; step < 8; step++) {
@@ -217,7 +173,7 @@ function generateArpPattern(chordNotes: string[], style: ArpStyle, energy: Energ
 
 // ── Melody Motif ─────────────────────────────────────────────
 
-function generateMotif(scaleNotes: string[], length: number): number[] {
+function generateMotif(scaleNotes: string[], length: number, rng: () => number, rngInt: (min: number, max: number) => number): number[] {
     const motif: number[] = []
     let degree = rngInt(0, scaleNotes.length - 1)
     for (let i = 0; i < length; i++) {
@@ -229,7 +185,7 @@ function generateMotif(scaleNotes: string[], length: number): number[] {
     return motif
 }
 
-function varyMotif(motif: number[], amount: number): number[] {
+function varyMotif(motif: number[], amount: number, rng: () => number, rngInt: (min: number, max: number) => number): number[] {
     return motif.map(d => rng() < amount ? d + rngInt(-1, 1) : d)
 }
 
@@ -238,75 +194,6 @@ function degreeToNote(scaleNotes: string[], degree: number, octaveBase: number):
     const oct = Math.floor(degree / len)
     const idx = ((degree % len) + len) % len
     return scaleNotes[idx] + (octaveBase + oct)
-}
-
-// ── Energy Curve ─────────────────────────────────────────────
-
-function buildEnergyCurve(structure: readonly SectionDef[]): { curve: number[]; sectionNames: string[] } {
-    const raw: number[] = []
-    const sectionNames: string[] = []
-    for (const section of structure) {
-        for (let b = 0; b < section.bars; b++) {
-            raw.push(section.energy)
-            sectionNames.push(section.name)
-        }
-    }
-
-    function smooth(arr: number[]): number[] {
-        return arr.map((e, i) => {
-            const prev = i > 0 ? arr[i - 1] : e
-            const next = i < arr.length - 1 ? arr[i + 1] : e
-            return prev * 0.15 + e * 0.7 + next * 0.15
-        })
-    }
-    let curve = raw
-    for (let pass = 0; pass < 3; pass++) curve = smooth(curve)
-
-    // Seeded Perlin-like noise for organic feel
-    const noise: number[] = []
-    for (let i = 0; i <= raw.length; i++) noise.push(rng())
-    curve = curve.map((e, i) => {
-        const fi = Math.floor(i * 0.5)
-        const frac = (i * 0.5) - fi
-        const t = frac * frac * (3 - 2 * frac) // smoothstep
-        const a = noise[Math.min(fi, noise.length - 1)]
-        const b = noise[Math.min(fi + 1, noise.length - 1)]
-        const n = (a + (b - a) * t - 0.5) * 0.1
-        return Math.max(0.01, Math.min(1, e + n))
-    })
-
-    return { curve, sectionNames }
-}
-
-// ── BPM Curve ────────────────────────────────────────────────
-
-function buildBpmCurve(structure: readonly SectionDef[]): number[] {
-    const baseBpm = Math.round(BPM_CENTER + (rng() - 0.5) * BPM_RANGE)
-    const bpmCurve: number[] = []
-    for (const section of structure) {
-        const nudge = Math.round((rng() - 0.5) * 8)
-        const currentBpm = Math.max(112, Math.min(144, baseBpm + nudge))
-        for (let b = 0; b < section.bars; b++) {
-            bpmCurve.push(currentBpm)
-        }
-    }
-    return bpmCurve
-}
-
-// ── Bar Timing ───────────────────────────────────────────────
-
-function buildBarTiming(bpmCurve: number[]): { barStartTimes: number[]; barDurations: number[]; totalTime: number } {
-    const barStartTimes: number[] = []
-    const barDurations: number[] = []
-    let t = 0
-    for (let i = 0; i < bpmCurve.length; i++) {
-        const beatSec = 60 / bpmCurve[i]
-        const barSec = beatSec * 4
-        barStartTimes.push(t)
-        barDurations.push(barSec)
-        t += barSec
-    }
-    return { barStartTimes, barDurations, totalTime: t }
 }
 
 // ── Sigmoid Instrument Activation ────────────────────────────
@@ -327,7 +214,7 @@ const ORDERING_NAMES = ['Classic', 'Arp Lead', 'Bass Heavy', 'Rhythm First', 'Me
 const SLOT_THRESHOLDS = [0.05, 0.18, 0.30, 0.42, 0.55, 0.68, 0.82] as const
 const SLOT_SMOOTHNESS = [0.14, 0.13, 0.12, 0.11, 0.10, 0.09, 0.08] as const
 
-function computeVolumes(energy: Energy, ordering: readonly InstrumentName[]): Record<InstrumentName, number> {
+function computeVolumes(energy: number, ordering: readonly InstrumentName[]): Record<InstrumentName, number> {
     const vols = {} as Record<InstrumentName, number>
     for (let i = 0; i < ordering.length; i++) {
         vols[ordering[i]] = sigmoid((energy - SLOT_THRESHOLDS[i]) / SLOT_SMOOTHNESS[i])
@@ -354,16 +241,13 @@ function dedupChord(events: ChordEvent[]): ChordEvent[] {
 
 // ── Main: composeMusic ───────────────────────────────────────
 
-export function composeMusic(seed: Seed): MusicComposition {
-    seedRng(seed)
+export function composeMusic(grid: RhythmGrid): MusicComposition {
+    const { rng, rngInt, pick } = createComposerRng(grid.seed)
 
     const tonic = pick(KEY_POOL)
-    const structIdx = Math.floor(rng() * STRUCTURES.length)
-    const structure = STRUCTURES[structIdx]
-    const structureName = STRUCTURE_NAMES[structIdx]
 
     // 4-chord Markov phrase
-    const phrase = generatePhrase()
+    const phrase = generatePhrase(rng)
     const chordSymbols = Progression.fromRomanNumerals(tonic, phrase)
 
     // Voice chords with minimal movement
@@ -388,7 +272,7 @@ export function composeMusic(seed: Seed): MusicComposition {
     // Per-song random choices
     const arpStyle = pick(ARP_STYLES)
     const motifLen = pick([4, 5, 6, 8])
-    const baseMotif = generateMotif(scaleNotes, motifLen)
+    const baseMotif = generateMotif(scaleNotes, motifLen, rng, rngInt)
     const drumChoices: Record<EnergyLevel, number> = {
         low: rngInt(0, 2), mid: rngInt(0, 2),
         high: rngInt(0, 2), peak: rngInt(0, 2),
@@ -399,21 +283,12 @@ export function composeMusic(seed: Seed): MusicComposition {
     const ordering = ORDERINGS[orderIdx]
     const orderingName = ORDERING_NAMES[orderIdx]
 
-    // Build curves and timing
-    const { curve: energyCurve, sectionNames } = buildEnergyCurve(structure)
-    const totalBars = energyCurve.length
-    const bpmCurve = buildBpmCurve(structure)
-    const { barStartTimes, barDurations, totalTime } = buildBarTiming(bpmCurve)
-
-    // Build bar data
-    const bars: BarData[] = []
-    for (let i = 0; i < totalBars; i++) {
+    // Build bar voicings
+    const barVoicings: BarVoicing[] = []
+    for (let i = 0; i < grid.totalBars; i++) {
         const phraseIdx = i % 4
-        bars.push({
+        barVoicings.push({
             bar: i,
-            section: sectionNames[i],
-            energy: energyCurve[i],
-            bpm: bpmCurve[i],
             chordSymbol: chordSymbols[phraseIdx],
             numeral: phrase[phraseIdx],
             voiced: phraseVoicings[phraseIdx],
@@ -424,7 +299,7 @@ export function composeMusic(seed: Seed): MusicComposition {
     const melodyRhythm: boolean[] = []
     for (let i = 0; i < motifLen; i++) melodyRhythm.push(i === 0 || rng() < 0.5)
 
-    // Pre-compute ALL events
+    // Pre-compute ALL events — reads timing from grid
     const padEvents: ChordEvent[] = []
     const bassEvents: NoteEvent[] = []
     const kickEvents: DrumEvent[] = []
@@ -436,32 +311,33 @@ export function composeMusic(seed: Seed): MusicComposition {
     let currentMotif = baseMotif
     let melodyStepCounter = 0
 
-    for (const bar of bars) {
-        const barTime = barStartTimes[bar.bar]
-        const barSec = barDurations[bar.bar]
+    for (let barIdx = 0; barIdx < grid.totalBars; barIdx++) {
+        const barTime = grid.barStartTimes[barIdx]
+        const barSec = grid.barDurations[barIdx]
         const beatSec = barSec / 4
         const stepSec = beatSec / 2
-        const energy = bar.energy
+        const energy = grid.energyCurve[barIdx]
         const level = energyLevel(energy)
         const vols = computeVolumes(energy, ordering)
+        const voicing = barVoicings[barIdx]
 
-        const nextEnergy = bar.bar < totalBars - 1 ? energyCurve[bar.bar + 1] : energy
+        const nextEnergy = barIdx < grid.totalBars - 1 ? grid.energyCurve[barIdx + 1] : energy
         const isTransition = Math.abs(nextEnergy - energy) > 0.06
-        const isPhraseLast = (bar.bar + 1) % 4 === 0
+        const isPhraseLast = (barIdx + 1) % 4 === 0
 
-        // Pad: overlapping duration for crossfade
+        // Pad
         if (vols.pad > MIN_VEL) {
             padEvents.push({
                 time: barTime,
-                notes: bar.voiced,
+                notes: voicing.voiced,
                 duration: barSec * 1.1,
                 vel: vols.pad,
             })
         }
 
-        // Bass: rhythm varies with energy
+        // Bass
         if (vols.bass > MIN_VEL) {
-            const rootNote = bar.voiced[0]
+            const rootNote = voicing.voiced[0]
             const rootMidi = Note.midi(rootNote)
             if (rootMidi !== null) {
                 const bassNote = Note.fromMidi(rootMidi - 12)
@@ -472,7 +348,7 @@ export function composeMusic(seed: Seed): MusicComposition {
                     bassEvents.push({ time: barTime, note: bassNote, duration: beatSec * 1.8, vel: vols.bass })
                     bassEvents.push({ time: barTime + beatSec * 2, note: bassNote, duration: beatSec * 1.8, vel: vols.bass })
                 } else {
-                    const chordMidis = bar.voiced
+                    const chordMidis = voicing.voiced
                         .map(n => Note.midi(n))
                         .filter((m): m is number => m !== null)
                         .map(m => m - 12)
@@ -491,7 +367,7 @@ export function composeMusic(seed: Seed): MusicComposition {
             }
         }
 
-        // Drums: pattern selected by energy, velocity by sigmoid
+        // Drums
         const kickPat = KICK_PATTERNS[level][drumChoices[level]]
         const snarePat = SNARE_PATTERNS[level][drumChoices[level]]
         const hatPat = HAT_PATTERNS[level][drumChoices[level]]
@@ -506,7 +382,7 @@ export function composeMusic(seed: Seed): MusicComposition {
                 hatEvents.push({ time: t, vel: vols.hat })
         }
 
-        // Drum fill at phrase boundary before significant energy change
+        // Drum fill
         if (isTransition && isPhraseLast && vols.snare > 0.1) {
             for (let step = 5; step < 8; step++) {
                 snareEvents.push({
@@ -518,11 +394,11 @@ export function composeMusic(seed: Seed): MusicComposition {
 
         // Arp
         if (vols.arp > MIN_VEL) {
-            const arpNotes = bar.voiced
+            const arpNotes = voicing.voiced
                 .map(n => Note.midi(n))
                 .filter((m): m is number => m !== null)
                 .map(m => Note.fromMidi(m + 12))
-            const pattern = generateArpPattern(arpNotes, arpStyle, energy)
+            const pattern = generateArpPattern(arpNotes, arpStyle, energy, rng)
             for (let step = 0; step < 8; step++) {
                 const patNote = pattern[step]
                 if (patNote !== null) {
@@ -539,7 +415,7 @@ export function composeMusic(seed: Seed): MusicComposition {
         // Melody
         if (vols.melody > MIN_VEL) {
             if (melodyStepCounter > 0 && melodyStepCounter % 16 === 0) {
-                currentMotif = rng() < 0.3 ? baseMotif : varyMotif(baseMotif, 0.3)
+                currentMotif = rng() < 0.3 ? baseMotif : varyMotif(baseMotif, 0.3, rng, rngInt)
             }
             for (let step = 0; step < 8; step++) {
                 const motifIdx = melodyStepCounter % motifLen
@@ -555,22 +431,14 @@ export function composeMusic(seed: Seed): MusicComposition {
                 })
             }
         } else {
-            melodyStepCounter += 8 // keep counter advancing for determinism
+            melodyStepCounter += 8
         }
     }
 
     return {
-        seed,
-        tonic,
-        structureName,
         orderingName,
-        totalBars,
-        totalTime,
-        bars,
-        energyCurve,
-        bpmCurve,
-        barStartTimes,
-        barDurations,
+        tonic,
+        barVoicings,
         padEvents: dedupChord(padEvents),
         bassEvents: dedupNote(bassEvents),
         kickEvents: dedupDrum(kickEvents),

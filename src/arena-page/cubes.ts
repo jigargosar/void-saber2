@@ -17,9 +17,8 @@ export const TRAVEL_DURATION: Seconds = (HIT_Z - SPAWN_Z) / SPEED
 const LANE_POSITIONS = [-0.75, -0.25, 0.25, 0.75]
 const ROW_POSITIONS = [0.5, 1.0, 1.5]
 
-// HACK: beat flash via onBeat callback — replace with arena event queue
 const BEAT_FLASH_SCALE = 1.5
-const BEAT_FLASH_DECAY = 0.12
+const BEAT_FLASH_DECAY: Seconds = 0.12
 
 interface CubeEntry {
     readonly mesh: Mesh

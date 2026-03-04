@@ -8,15 +8,17 @@ Board
 
 # InProgress
 
-- Extract rhythm grid (see plan-arena.md for details)
-- Composer refactor: takes grid as input (see plan-arena.md)
-- Stage refactor: consumes grid directly (see plan-arena.md)
-- Choreography refactor: consumes grid steps + energy (see plan-arena.md)
-- Arena event queue: replace direct callbacks (see plan-arena.md)
 - Lobby menu visual improvements (10 issues in plan-lobby.md)
 
 # Done
 
+- Arena event queue: beat schedule + song end detection via arena-events.ts
+- Choreography refactor: consumes grid steps + energy (no more BeatTimeline)
+- Stage refactor: receives beat events from arena event queue
+- Composer refactor: takes grid as input, outputs events only
+- Extract rhythm grid: createRhythmGrid(seed) → RhythmGrid with StepInfo[]
+- Music player decoupled: no onBeat callback, no CommandQueue dependency
+- Deleted beat-timeline.ts (replaced by rhythm grid steps)
 - Cube spawning + movement on music clock (step 11 — hardcoded, uses choreography)
 - Saber-cube collision detection (segment-to-sphere)
 - Move music types to owning modules (delete music-types.ts)
@@ -32,10 +34,11 @@ Board
 
 # Backlog
 
+- Directional arrows on cube faces (step 12)
+- Direction-based collision: verify saber velocity vs required swingDirection
 - Environment dispose: full cleanup of pillars, track, ribs, lights (currently only glow layer is disposed; scene.dispose() covers it at shutdown, but module-level teardown should be explicit)
 - GlowLayer Quest 2 perf: reduce to mainTextureSamples:1, blurKernelSize:32, mainTextureFixedSize:512
 - Color3.scale() allocations: use scaleToRef() in beat render system + early-out when intensity=0
-- Name magic numbers in stage.ts: 0.12 decay rate, 0.8 fog mult, 1.5 pillar mult
 - WebXR: disable online controller repository
 - WebXR: watch for hardwareScalingLevel reset on XR session start
 - WebXR: detach FreeCamera controls on XR start

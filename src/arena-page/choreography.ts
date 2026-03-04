@@ -1,6 +1,5 @@
 import { type Seed, type Seconds, type Hand, type Difficulty } from '../types'
-import { type MusicComposition } from '../music/music-composer'
-import { type BeatTimeline } from '../music/beat-timeline'
+import { type RhythmGrid } from '../music/rhythm-grid'
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -32,7 +31,7 @@ export interface ChoreographyConfig {
 // ── Seeded RNG (local instance, no shared state) ─────────────
 
 function createLocalRng(seed: Seed) {
-    let s = seed
+    let s = (seed * 7) % 2147483647 || 1 // derive different sequence from grid/composer RNGs
     function rng(): number {
         s = (s * 16807) % 2147483647
         return (s - 1) / 2147483646
@@ -58,36 +57,28 @@ const DENSITY_BY_DIFFICULTY: Record<Difficulty, number> = {
 }
 const MAX_CONSECUTIVE_SAME_HAND = 3
 
-function findBarIndex(beatTime: Seconds, barStartTimes: readonly Seconds[]): number {
-    for (let i = barStartTimes.length - 1; i >= 0; i--) {
-        if (beatTime >= barStartTimes[i]) return i
-    }
-    return 0
-}
-
 // ── Main ─────────────────────────────────────────────────────
 
 export function createChoreography(
-    composition: MusicComposition,
-    beatTimeline: BeatTimeline,
+    grid: RhythmGrid,
     config: ChoreographyConfig,
 ): Choreography {
-    const { rng, pick } = createLocalRng(composition.seed)
+    const { rng, pick } = createLocalRng(grid.seed)
     const density = DENSITY_BY_DIFFICULTY[config.difficulty]
     const cues: Cue[] = []
 
     let lastHand: Hand = 'right'
     let consecutiveSameHand = 0
 
-    const lastCueTime = composition.totalTime - config.endOffset
+    const lastCueTime = grid.totalTime - config.endOffset
 
-    for (const beatTime of beatTimeline.beatTimes) {
-        if (beatTime < config.startOffset) continue
-        if (beatTime > lastCueTime) break
-        const barIndex = findBarIndex(beatTime, composition.barStartTimes)
-        const energy = composition.energyCurve[barIndex]
+    // Cues land on grid steps — every step has music playing
+    for (const step of grid.steps) {
+        if (step.time < config.startOffset) continue
+        if (step.time > lastCueTime) break
 
-        if (rng() > density * (0.5 + energy * 0.5)) continue
+        // Density gate: energy-modulated — low energy skips more, high energy keeps more
+        if (rng() > density * (0.5 + step.energy * 0.5)) continue
 
         // Hand: alternate, cap consecutive same-hand
         let hand: Hand = lastHand === 'left' ? 'right' : 'left'
@@ -112,7 +103,7 @@ export function createChoreography(
         // Direction: 'any' for now (collision doesn't check direction yet)
         const swingDirection: SwingDirection = 'any'
 
-        cues.push({ beatTime, lane, row, hand, swingDirection })
+        cues.push({ beatTime: step.time, lane, row, hand, swingDirection })
     }
 
     return { cues }
